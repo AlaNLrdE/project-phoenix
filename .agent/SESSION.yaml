@@ -7,6 +7,14 @@ scale: KSP_0.1
 loc: 2500+
 docs_kb: 90
 
+git:
+  local_repo: "/var/home/alan/wk/TTSP"
+  remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
+  branch: master
+  commit_hash: "7c16032"
+  first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
+  credentials_configured: true
+
 files:
   include:
     - math/Constants.hpp
@@ -119,8 +127,10 @@ build:
   commands:
     compile: "cd /var/home/alan/wk/TTSP && ./build.sh release"
     run: "./build/phoenix"
-    verify: "python3 check_structure.py"
-    rebuild_clean: "rm -rf build && ./build.sh release"
+    verify: "python3 check_structure.py"    git_status: "git status"
+    git_log: "git log --oneline"
+    git_push: "git push origin master"
+    git_pull: "git pull origin master"    rebuild_clean: "rm -rf build && ./build.sh release"
 
 examples:
   ex1: "CelestialBody_Earth_properties"
