@@ -1,0 +1,178 @@
+project: Phoenix
+phase: 1
+date: "2026-05-01"
+status: COMPLETE
+language: C++20
+scale: KSP_0.1
+loc: 2500+
+docs_kb: 90
+
+files:
+  include:
+    - math/Constants.hpp
+    - physics/Orbit.hpp
+    - physics/CelestialBody.hpp
+    - vessels/Vessel.hpp
+    - world/WorldManager.hpp
+  src:
+    - main.cpp
+    - physics/Orbit.cpp
+    - physics/CelestialBody.cpp
+    - vessels/Vessel.cpp
+    - world/WorldManager.cpp
+  config:
+    - CMakeLists.txt
+    - build.sh
+    - setup_glm.sh
+    - check_structure.py
+  docs:
+    - README.md
+    - QUICKSTART.md
+    - INSTALL.md
+    - ARCHITECTURE.md
+    - ROADMAP.md
+    - SUMMARY.md
+    - STATUS.txt
+  vscode:
+    - launch.json
+    - tasks.json
+    - settings.json
+
+classes:
+  Orbit:
+    size_kb: 14.7
+    elements: [a, e, i, Omega, omega, nu]
+    constructors:
+      - name: classical
+        params: [a, e, i, Omega, omega, nu, mu, epoch]
+      - name: stateVector
+        params: [position, velocity, mu, epoch]
+    methods_public:
+      - getPositionAtTime
+      - getVelocityAtTime
+      - getStateAtTime
+      - getPeriod
+      - getAltitude
+      - getDistanceToPeriapsis
+      - isStable
+    algorithm_kepler:
+      equation: "M = E - e*sin(E)"
+      solver: Newton-Raphson
+      tolerance: 1e-10
+      max_iterations: 100
+      convergence_typical: "3-5 iterations"
+    precision: double
+
+  CelestialBody:
+    size_kb: 7.5
+    members: [name, mass, radius, mu, surfaceGravity, atmosphere, orbit, satellites]
+    methods: [setOrbit, getPositionAtTime, addSatellite]
+
+  Vessel:
+    size_kb: 7.5
+    members: [name, dryMass, fuelMass, orbit, currentTime, referenceBody, state]
+    methods: [getPosition, getVelocity, getState, applyDeltaV, consumeFuel, printStatus]
+
+  WorldManager:
+    size_kb: 8.5
+    members: [celestialBodies, vessels, simulationTime, timeWarp, activeVessel, floatingOrigin]
+    methods: [registerCelestialBody, registerVessel, updateSimulation, setTimeWarp, setActiveVessel]
+
+  Constants:
+    size_kb: 1.5
+    defines:
+      MU_EARTH: 3.986e14
+      KSP_SCALE: 0.1
+      KEPLER_TOLERANCE: 1e-10
+      KEPLER_MAX_ITERATIONS: 100
+    types: [dvec3, dquat, dmat3, dmat4]
+
+physics:
+  kepler_equation: "M = E - e*sin(E)"
+  solver: Newton-Raphson
+  tolerance: 1e-10_rad
+  max_iterations: 100
+  convergence_typical: "3-5"
+  precision: double_throughout
+  
+  propagation_steps:
+    1: "MeanAnomaly: M = n(t - t0), n = sqrt(mu/a^3)"
+    2: "SolveKepler: E from M using Newton-Raphson"
+    3: "TrueAnomaly: nu from E using arctan2"
+    4: "OrbitalPlane: (r,theta) in orbital frame"
+    5: "Transform: R_z(Omega)*R_x(i)*R_z(omega) to ECI"
+
+  conversions:
+    - "E <-> nu (anomaly)"
+    - "stateVector <-> elements"
+    - "orbital <-> inertial"
+
+build:
+  required:
+    compiler: C++20
+    cmake: "3.20+"
+    glm: header-only
+  compilers: [GCC10+, Clang12+, MSVC2019+]
+  flags:
+    release: -O3
+    debug: "-g -O0"
+  commands:
+    compile: "cd /var/home/alan/wk/TTSP && ./build.sh release"
+    run: "./build/phoenix"
+    verify: "python3 check_structure.py"
+    rebuild_clean: "rm -rf build && ./build.sh release"
+
+examples:
+  ex1: "CelestialBody_Earth_properties"
+  ex2: "LEO_circular_orbit_from_stateVector"
+  ex3: "Full_orbital_period_propagation"
+  ex4: "WorldManager_integration"
+  ex5: "Hohmann_transfer_deltaV"
+
+next_phase:
+  name: Phase2_PartHierarchy
+  estimated_time: "3 weeks"
+  estimated_loc: 2000
+  tasks:
+    - "Part class with hierarchy"
+    - "Vessel modification (Part* rootPart)"
+    - "Dynamic Center of Mass calculation"
+    - "Vessel splitting"
+    - "Docking system"
+
+namespaces:
+  Phoenix::Math: "Constants, Types, Conversions"
+  Phoenix::Physics: "Orbit, CelestialBody"
+  Phoenix::Vessels: "Vessel"
+  Phoenix::World: "WorldManager"
+
+checklist_phase1:
+  structure: true
+  orbit_class: true
+  kepler_solver: true
+  state_conversion: true
+  celestial_body: true
+  vessel_maneuvering: true
+  worldmanager: true
+  time_warp: true
+  examples: true
+  cmake: true
+  vscode_config: true
+  documentation: true
+  build_scripts: true
+  structure_verifier: true
+  git_ready: true
+
+resume_if_interrupted:
+  step1: "cat .agent/SESSION.yaml"
+  step2: "python3 check_structure.py"
+  step3: "./build.sh release"
+  step4: "./build/phoenix"
+  step5: "Read README.md or ARCHITECTURE.md"
+
+documentation_priority:
+  quickstart: "5 min intro"
+  main_cpp: "30 min examples"
+  readme: "20 min complete guide"
+  architecture: "15 min diagrams & algorithms"
+  roadmap: "complete phases 2-6"

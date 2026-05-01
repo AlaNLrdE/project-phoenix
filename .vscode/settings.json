@@ -1,0 +1,21 @@
+{
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/include",
+        "/usr/include/glm"
+    ],
+    "C_Cpp.default.defines": [
+        "_DEBUG"
+    ],
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.formatting": "Default",
+    "editor.formatOnSave": true,
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "editor.formatOnSave": true
+    },
+    "C_Cpp.codeAnalysis.exclude": {
+        "build": true
+    }
+}
