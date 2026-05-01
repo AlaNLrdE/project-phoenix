@@ -6,6 +6,7 @@
 #include <physics/CelestialBody.hpp>
 #include <vessels/Vessel.hpp>
 #include <parts/Part.hpp>
+#include <parts/Engine.hpp>
 #include <math/Constants.hpp>
 
 using namespace Phoenix::Math;
@@ -386,15 +387,116 @@ void example6_PartHierarchy()
     }
 }
 
+/**
+ * Ejemplo 7: Sistema de propulsión — Tsiolkovsky y burn (Phase 3).
+ */
+void example7_Propulsion()
+{
+    std::cout << "\n╔════════════════════════════════════════╗\n";
+    std::cout << "║  EJEMPLO 7: Propulsión (Phase 3)        ║\n";
+    std::cout << "╚════════════════════════════════════════╝\n\n";
+
+    // ── Configuración del vehículo ───────────────────────────────────────────
+    //
+    //   [CommandPod]  850 kg seco
+    //      └─ [FuelTank]  500 kg seco + 8 000 kg prop.
+    //            └─ [Engine]  Merlin-1D  (throttleable)
+
+    auto pod = std::make_shared<Part>("CommandPod", PartType::Command, 850.0);
+    auto tank = std::make_shared<Part>("MainTank", PartType::FuelTank, 500.0, 8000.0);
+    auto engine = std::make_shared<Engine>("Merlin-1D", 630.0, 845000.0, 311.0);
+    //                                                   ↑dry    ↑thrust N  ↑Isp s
+
+    tank->fuelMass = tank->maxFuelMass;
+    tank->localPosition = dvec3(0, 0, -2.0);
+    engine->localPosition = dvec3(0, 0, -4.5);
+
+    pod->addChild(tank);
+    tank->addChild(engine);
+
+    double earth_mu = Constants::MU_EARTH;
+    double earth_radius = 6371000.0 * Constants::KSP_SCALE;
+    double alt = 200000.0;
+    double r_mag = earth_radius + alt;
+    double v_mag = std::sqrt(earth_mu / r_mag);
+    dvec3 pos0(r_mag, 0.0, 0.0);
+    dvec3 vel0(0.0, v_mag, 0.0);
+    Orbit leo(pos0, vel0, earth_mu, 0.0);
+
+    CelestialBody earth_body("Earth", 5.972e24, earth_radius,
+                             86164.0, earth_mu, 9.81, true,
+                             100000.0 * Constants::KSP_SCALE);
+
+    Vessel ship("Falcon9S2", 0.0, leo, "Earth", &earth_body);
+    ship.setRootPart(pod);
+
+    std::cout << "✓ Vehículo ensamblado\n";
+    std::cout << "  Masa total:         " << std::fixed << std::setprecision(1)
+              << ship.getTotalMass() << " kg\n";
+    std::cout << "  Combustible:        " << ship.getTotalFuelMass() << " kg\n\n";
+
+    // ── Encender motor al 100 % throttle ────────────────────────────────────
+    ship.igniteEngines();
+    ship.setThrottle(1.0);
+
+    double thrust = ship.getTotalThrust();
+    std::cout << "Motor encendido (throttle 100 %):\n";
+    std::cout << "  Empuje:             " << std::setprecision(0)
+              << thrust / 1000.0 << " kN\n";
+    std::cout << "  Flujo másico:       " << std::setprecision(2)
+              << engine->getMassFlowRate() << " kg/s\n";
+    std::cout << "  Vel. de exhaust:    " << engine->getExhaustVelocity()
+              << " m/s\n\n";
+
+    // ── ΔV disponible (Tsiolkovsky) ──────────────────────────────────────────
+    double avail_dv = ship.computeAvailableDeltaV();
+    std::cout << "Ecuación de Tsiolkovsky:\n";
+    std::cout << "  ΔV disponible:      " << std::setprecision(1)
+              << avail_dv << " m/s  (" << avail_dv / 1000.0 << " km/s)\n";
+
+    double burnTime = engine->computeBurnTime(avail_dv * 0.5,
+                                              ship.getTotalFuelMass(),
+                                              ship.getTotalMass());
+    std::cout << "  t_burn (50 % ΔV):   " << std::setprecision(2)
+              << burnTime << " s\n\n";
+
+    // ── Ejecutar burn pro-grado de 60 segundos ───────────────────────────────
+    dvec3 posAntes, velAntes;
+    ship.getState(ship.currentTime, posAntes, velAntes);
+    double altAntes = (glm::length(posAntes) - earth_radius) / 1000.0;
+    double vAntes = glm::length(velAntes);
+
+    double dv_aplicado = ship.executeBurn(60.0); // 60 s pro-grado
+
+    dvec3 posDes, velDes;
+    ship.getState(ship.currentTime, posDes, velDes);
+    double altDesp = (glm::length(posDes) - earth_radius) / 1000.0;
+    double vDesp = glm::length(velDes);
+
+    std::cout << "Burn pro-grado de 60 s:\n";
+    std::cout << "  ΔV aplicado:        " << std::setprecision(2)
+              << dv_aplicado << " m/s\n";
+    std::cout << "  Velocidad:          " << vAntes << " → " << vDesp << " m/s\n";
+    std::cout << "  Altitud periapsis:  " << std::setprecision(0) << altAntes
+              << " → " << altDesp << " km\n";
+    std::cout << "  Combustible restante: " << std::setprecision(1)
+              << ship.getTotalFuelMass() << " kg\n\n";
+
+    // ── Apagar motor ─────────────────────────────────────────────────────────
+    ship.shutdownEngines();
+    std::cout << "✓ Motor apagado\n";
+    std::cout << "  Empuje (post-shutdown): " << std::setprecision(0)
+              << ship.getTotalThrust() << " N\n";
+}
 int main()
 {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║           PROJECT PHOENIX - PHASE 2 DEMONSTRATION            ║
+║           PROJECT PHOENIX - PHASE 3 DEMONSTRATION            ║
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
-║     Orbital Mechanics · Part Hierarchy               ║
+║     Orbital Mechanics · Part Hierarchy · Propulsion          ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -407,6 +509,7 @@ int main()
         example4_VesselInOrbit();
         example5_ManeuverBasic();
         example6_PartHierarchy();
+        example7_Propulsion();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -414,8 +517,9 @@ int main()
 ║                                                              ║
 ║  Phase 1 — Mecánica orbital Kepleriana (6 elementos)         ║
 ║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
+║  Phase 3 — Motor cohete, Tsiolkovsky, burn pro-grado         ║
 ║                                                              ║
-║  Próxima fase: Sistema de propulsión                         ║
+║  Próxima fase: Aerodinámica y atmósfera                      ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";

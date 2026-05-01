@@ -1,5 +1,5 @@
 project: Phoenix
-phase: 2
+phase: 3
 date: "2026-05-01"
 status: IN_PROGRESS
 language: C++20
@@ -21,6 +21,7 @@ files:
     - physics/Orbit.hpp
     - physics/CelestialBody.hpp
     - parts/Part.hpp
+    - parts/Engine.hpp
     - vessels/Vessel.hpp
     - world/WorldManager.hpp
   src:
@@ -28,6 +29,7 @@ files:
     - physics/Orbit.cpp
     - physics/CelestialBody.cpp
     - parts/Part.cpp
+    - parts/Engine.cpp
     - vessels/Vessel.cpp
     - world/WorldManager.cpp
   config:

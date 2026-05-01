@@ -85,6 +85,7 @@ set(SOURCES
     ${SRC_DIR}/physics/Orbit.cpp
     ${SRC_DIR}/physics/CelestialBody.cpp
     ${SRC_DIR}/parts/Part.cpp
+    ${SRC_DIR}/parts/Engine.cpp
     ${SRC_DIR}/vessels/Vessel.cpp
     ${SRC_DIR}/world/WorldManager.cpp
 )
@@ -94,6 +95,7 @@ set(HEADERS
     ${INCLUDE_DIR}/physics/Orbit.hpp
     ${INCLUDE_DIR}/physics/CelestialBody.hpp
     ${INCLUDE_DIR}/parts/Part.hpp
+    ${INCLUDE_DIR}/parts/Engine.hpp
     ${INCLUDE_DIR}/vessels/Vessel.hpp
     ${INCLUDE_DIR}/world/WorldManager.hpp
 )

@@ -3,6 +3,7 @@
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
 #include <parts/Part.hpp>
+#include <parts/Engine.hpp>
 #include <math/Constants.hpp>
 #include <string>
 #include <vector>
@@ -173,6 +174,62 @@ namespace Phoenix::Vessels
          * @return Nueva Vessel con las partes desacopladas; nullptr si no encontrado.
          */
         std::shared_ptr<Vessel> undock(const std::string &portName);
+
+        // ── Phase 3: Propulsion API ─────────────────────────────────────────
+
+        /**
+         * Devuelve punteros a todos los motores activos del árbol de partes.
+         */
+        std::vector<Engine *> getActiveEngines();
+
+        /**
+         * Enciende todos los motores disponibles.
+         */
+        void igniteEngines();
+
+        /**
+         * Apaga todos los motores.
+         */
+        void shutdownEngines();
+
+        /**
+         * Ajusta el throttle de todos los motores activos.
+         * @param t Throttle [0.0, 1.0]
+         */
+        void setThrottle(double t);
+
+        /**
+         * Masa total de combustible disponible en todos los depósitos activos.
+         */
+        double getTotalFuelMass() const;
+
+        /**
+         * Empuje total actual de todos los motores encendidos (N).
+         */
+        double getTotalThrust() const;
+
+        /**
+         * ΔV disponible aplicando la ecuación de Tsiolkovsky a la configuración
+         * actual (motores + depósitos).
+         * @return ΔV en m/s; 0 si no hay motores o combustible.
+         */
+        double computeAvailableDeltaV() const;
+
+        /**
+         * Simula un quemado finito de duración burnTime (segundos).
+         *
+         * - Consume combustible proporcional al flujo másico.
+         * - Aplica el ΔV acumulado como impulso instantáneo al final
+         *   (aproximación de impulso impulsivo).
+         * - La dirección del empuje es la velocidad orbital normalizada
+         *   (pro-grado) por defecto.
+         *
+         * @param burnTime  Duración del quemado (s).
+         * @param direction Dirección unitaria del empuje en el marco inercial.
+         *                  Si es cero, se usa la dirección pro-grado.
+         * @return ΔV real aplicado (m/s); 0 si no hay motores encendidos.
+         */
+        double executeBurn(double burnTime, dvec3 direction = dvec3(0.0));
     };
 
 } // namespace Phoenix::Vessels
