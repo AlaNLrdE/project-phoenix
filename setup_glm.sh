@@ -25,7 +25,11 @@ curl -L https://github.com/g-truc/glm/releases/download/0.9.9.8/glm-0.9.9.8.zip 
 }
 
 unzip -q glm.zip
-mv glm ./glm_temp && mv glm_temp/glm ./ && rm -rf glm_temp
+# The zip extracts to glm-X.X.X/ directory, so we need to move the glm subdirectory up
+if [ -d "glm-"* ]; then
+    mv glm-*/glm ./
+    rm -rf glm-*
+fi
 rm glm.zip
 
 echo "✓ GLM downloaded to $GLM_DIR"
