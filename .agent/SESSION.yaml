@@ -1,7 +1,7 @@
 project: Phoenix
-phase: 1
+phase: 2
 date: "2026-05-01"
-status: COMPLETE
+status: IN_PROGRESS
 language: C++20
 scale: KSP_0.1
 loc: 2500+
@@ -20,12 +20,14 @@ files:
     - math/Constants.hpp
     - physics/Orbit.hpp
     - physics/CelestialBody.hpp
+    - parts/Part.hpp
     - vessels/Vessel.hpp
     - world/WorldManager.hpp
   src:
     - main.cpp
     - physics/Orbit.cpp
     - physics/CelestialBody.cpp
+    - parts/Part.cpp
     - vessels/Vessel.cpp
     - world/WorldManager.cpp
   config:
@@ -140,15 +142,30 @@ examples:
   ex5: "Hohmann_transfer_deltaV"
 
 next_phase:
-  name: Phase2_PartHierarchy
-  estimated_time: "3 weeks"
-  estimated_loc: 2000
+  name: Phase3_Propulsion
+  estimated_time: "2 weeks"
+  estimated_loc: 1500
   tasks:
-    - "Part class with hierarchy"
-    - "Vessel modification (Part* rootPart)"
-    - "Dynamic Center of Mass calculation"
-    - "Vessel splitting"
-    - "Docking system"
+    - "Engine class (thrust, Isp, propellant consumption)"
+    - "Throttle control en Vessel"
+    - "Rocket equation (Tsiolkovsky)"
+    - "Burn time calculation"
+    - "Multi-engine configurations"
+
+checklist_phase2:
+  part_class: true
+  part_type_enum: true
+  part_tree_mass: true
+  part_tree_com: true
+  part_add_child: true
+  part_detach: true
+  part_fuel_management: true
+  vessel_rootpart: true
+  vessel_stage: true
+  vessel_dock: true
+  vessel_undock: true
+  cmake_updated: true
+  build_ok: true
 
 namespaces:
   Phoenix::Math: "Constants, Types, Conversions"

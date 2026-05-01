@@ -2,6 +2,7 @@
 
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
+#include <parts/Part.hpp>
 #include <math/Constants.hpp>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@ namespace Phoenix::Vessels
 
     using namespace Math;
     using namespace Physics;
+    using namespace Parts;
 
     /**
      * @class Vessel
@@ -39,6 +41,10 @@ namespace Phoenix::Vessels
         std::string referenceBodyName; ///< Cuerpo alrededor del cual orbita
         CelestialBody *referenceBody;  ///< Puntero al cuerpo de referencia
 
+        // ── Phase 2: Jerarquía de partes ────────────────────────────────────
+        /// Raíz del árbol de partes. nullptr = nave como punto de masa (Phase 1).
+        std::shared_ptr<Part> rootPart;
+
         /**
          * Constructor.
          *
@@ -58,9 +64,11 @@ namespace Phoenix::Vessels
         ~Vessel() = default;
 
         /**
-         * Obtiene la masa total (seca + combustible).
+         * Obtiene la masa total.
+         * Si rootPart está definido, se calcula desde el árbol de partes.
+         * En caso contrario, devuelve dryMass + fuelMass (modo Phase 1).
          */
-        double getTotalMass() const { return dryMass + fuelMass; }
+        double getTotalMass() const;
 
         /**
          * Obtiene la posición en el marco inercial del cuerpo de referencia.
@@ -121,6 +129,50 @@ namespace Phoenix::Vessels
          * Imprime el estado de la nave (debug).
          */
         void printStatus() const;
+
+        // ── Phase 2: Part hierarchy API ──────────────────────────────────────
+
+        /** Asigna la raíz del árbol de partes. */
+        void setRootPart(std::shared_ptr<Part> root);
+
+        /**
+         * Devuelve punteros a todas las partes activas del árbol.
+         * Vacío si la nave está en modo punto-de-masa (rootPart == nullptr).
+         */
+        std::vector<Part *> getAllParts();
+
+        /**
+         * Centro de masa del vehículo en el marco local de la nave.
+         * Retorna (0,0,0) si no hay árbol de partes.
+         */
+        dvec3 getCenterOfMass() const;
+
+        /**
+         * Dispara el primer Decoupler activo del árbol.
+         * Separa el árbol en dos: la nave actual conserva la parte superior
+         * y retorna una nueva Vessel con la etapa inferior.
+         * @return Nueva Vessel separada; nullptr si no hay Decoupler.
+         */
+        std::shared_ptr<Vessel> stage();
+
+        /**
+         * Acopla otra nave: mueve su rootPart como hijo del puerto indicado.
+         * Tras el acoplamiento, other.rootPart queda vacío.
+         * @param other         Nave a acoplar (se modifica in-place).
+         * @param ownPortName   Nombre del DockingPort en esta nave.
+         * @param otherPortName Nombre del DockingPort en la otra nave.
+         * @return true si ambos puertos se encontraron y el acoplamiento fue exitoso.
+         */
+        bool dock(Vessel &other,
+                  const std::string &ownPortName,
+                  const std::string &otherPortName);
+
+        /**
+         * Desacopla la nave anclada al puerto indicado.
+         * @param portName Nombre del DockingPort por el que se desacopla.
+         * @return Nueva Vessel con las partes desacopladas; nullptr si no encontrado.
+         */
+        std::shared_ptr<Vessel> undock(const std::string &portName);
     };
 
 } // namespace Phoenix::Vessels

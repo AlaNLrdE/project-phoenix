@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cmath>
 #include <iomanip>
+#include <algorithm>
 
 namespace Phoenix::Vessels
 {
@@ -15,7 +16,8 @@ namespace Phoenix::Vessels
                    CelestialBody *refBody)
         : name(name_), status("active"), dryMass(dryMass_), fuelMass(0.0),
           orbit(orbit_), currentTime(0.0),
-          referenceBodyName(refBodyName), referenceBody(refBody) {}
+          referenceBodyName(refBodyName), referenceBody(refBody),
+          rootPart(nullptr) {}
 
     dvec3 Vessel::getPosition(double t) const
     {
@@ -124,6 +126,149 @@ namespace Phoenix::Vessels
                       << " m\n";
         }
         std::cout << "================================\n";
+    }
+
+    // ── Phase 2: implementaciones de Part hierarchy ────────────────────────────
+
+    double Vessel::getTotalMass() const
+    {
+        if (rootPart)
+            return rootPart->getTreeMass();
+        return dryMass + fuelMass;
+    }
+
+    void Vessel::setRootPart(std::shared_ptr<Part> root)
+    {
+        rootPart = std::move(root);
+    }
+
+    std::vector<Part *> Vessel::getAllParts()
+    {
+        if (!rootPart)
+            return {};
+        return rootPart->getAllParts();
+    }
+
+    dvec3 Vessel::getCenterOfMass() const
+    {
+        if (!rootPart)
+            return dvec3(0.0);
+        return rootPart->getTreeCoM();
+    }
+
+    std::shared_ptr<Vessel> Vessel::stage()
+    {
+        if (!rootPart)
+            return nullptr;
+
+        // Buscar el primer Decoupler activo (DFS preorder)
+        Part *decouplerRaw = nullptr;
+        {
+            auto all = getAllParts();
+            for (auto *p : all)
+            {
+                if (p->type == PartType::Decoupler && p->isActive)
+                {
+                    decouplerRaw = p;
+                    break;
+                }
+            }
+        }
+
+        if (!decouplerRaw)
+            return nullptr;
+
+        // Sin hijos: el separador estaba vacío, simplemente lo desactivamos
+        if (decouplerRaw->children.empty())
+        {
+            decouplerRaw->isActive = false;
+            return nullptr;
+        }
+
+        // Capturar la raíz de la etapa inferior ANTES de modificar el árbol
+        std::shared_ptr<Part> newRoot = decouplerRaw->children.front();
+        decouplerRaw->children.clear(); // newRoot sigue vivo por la copia anterior
+        newRoot->parent = nullptr;
+
+        // Desconectar el separador del árbol principal (lo mantiene vivo hasta fin de scope)
+        auto decouplerRef = decouplerRaw->detachFromParent();
+        (void)decouplerRef; // el separador se destruye al salir de scope
+
+        // Crear la nueva nave con la etapa separada
+        auto newVessel = std::make_shared<Vessel>(
+            name + "_stage",
+            0.0, // masa viene del árbol de partes
+            orbit, referenceBodyName, referenceBody);
+        newVessel->setRootPart(std::move(newRoot));
+        return newVessel;
+    }
+
+    bool Vessel::dock(Vessel &other,
+                      const std::string &ownPortName,
+                      const std::string &otherPortName)
+    {
+        if (!rootPart || !other.rootPart)
+            return false;
+
+        // Encontrar nuestro puerto
+        Part *ownPort = nullptr;
+        for (auto *p : getAllParts())
+        {
+            if (p->name == ownPortName && p->type == PartType::DockingPort)
+            {
+                ownPort = p;
+                break;
+            }
+        }
+        if (!ownPort)
+            return false;
+
+        // Validar que el puerto de la otra nave existe
+        bool otherFound = false;
+        for (auto *p : other.getAllParts())
+        {
+            if (p->name == otherPortName && p->type == PartType::DockingPort)
+            {
+                otherFound = true;
+                break;
+            }
+        }
+        if (!otherFound)
+            return false;
+
+        // Mover la raíz de la otra nave como hijo de nuestro puerto
+        ownPort->addChild(std::move(other.rootPart)); // other.rootPart = nullptr
+        return true;
+    }
+
+    std::shared_ptr<Vessel> Vessel::undock(const std::string &portName)
+    {
+        if (!rootPart)
+            return nullptr;
+
+        Part *port = nullptr;
+        for (auto *p : getAllParts())
+        {
+            if (p->name == portName && p->type == PartType::DockingPort)
+            {
+                port = p;
+                break;
+            }
+        }
+        if (!port || port->children.empty())
+            return nullptr;
+
+        // Separar el primer hijo del puerto (la nave acoplada)
+        auto dockedRoot = port->children.front();
+        port->children.erase(port->children.begin());
+        dockedRoot->parent = nullptr;
+
+        auto newVessel = std::make_shared<Vessel>(
+            name + "_undocked",
+            0.0,
+            orbit, referenceBodyName, referenceBody);
+        newVessel->setRootPart(std::move(dockedRoot));
+        return newVessel;
     }
 
 } // namespace Phoenix::Vessels

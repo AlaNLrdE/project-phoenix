@@ -5,12 +5,14 @@
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
 #include <vessels/Vessel.hpp>
+#include <parts/Part.hpp>
 #include <math/Constants.hpp>
 
 using namespace Phoenix::Math;
 using namespace Phoenix::Physics;
 using namespace Phoenix::Vessels;
 using namespace Phoenix::World;
+using namespace Phoenix::Parts;
 
 /**
  * Función auxiliar para imprimir vectores 3D.
@@ -301,16 +303,98 @@ void example5_ManeuverBasic()
               << hohmann.getPeriod() / 2.0 / 60.0 << " minutos\n";
 }
 
-// Función principal
+/**
+ * Ejemplo 6: Jerarquía de partes — cohete de 2 etapas (Phase 2).
+ */
+void example6_PartHierarchy()
+{
+    std::cout << "\n╔════════════════════════════════════════╗\n";
+    std::cout << "║  EJEMPLO 6: Jerarquía de Partes (Ph.2)  ║\n";
+    std::cout << "╚════════════════════════════════════════╝\n\n";
+
+    // ── Construir cohete de 2 etapas ────────────────────────────────────────
+    //
+    //   [Command Pod]  ← raíz
+    //      └─ [Decoupler]
+    //            └─ [FuelTank S2]  (etapa 2)
+    //                  └─ [Engine S2]
+    //                  └─ [Decoupler S2]
+    //                        └─ [FuelTank S1]  (etapa 1)
+    //                              └─ [Engine S1]
+
+    auto pod = std::make_shared<Part>("CommandPod", PartType::Command, 850.0);
+    auto decoTop = std::make_shared<Part>("Decoupler-2", PartType::Decoupler, 120.0);
+    auto tank2 = std::make_shared<Part>("FuelTank-S2", PartType::FuelTank, 500.0, 8000.0);
+    auto decoMid = std::make_shared<Part>("Decoupler-1", PartType::Decoupler, 120.0);
+    auto tank1 = std::make_shared<Part>("FuelTank-S1", PartType::FuelTank, 800.0, 15000.0);
+
+    // Llenar depósitos
+    tank2->fuelMass = tank2->maxFuelMass;
+    tank1->fuelMass = tank1->maxFuelMass;
+
+    // Posiciones locales (metros, eje +Z ascendente)
+    decoTop->localPosition = dvec3(0, 0, -1.2);
+    tank2->localPosition = dvec3(0, 0, -3.0);
+    decoMid->localPosition = dvec3(0, 0, -5.5);
+    tank1->localPosition = dvec3(0, 0, -8.0);
+
+    // Ensamblar árbol
+    pod->addChild(decoTop);
+    decoTop->addChild(tank2);
+    tank2->addChild(decoMid);
+    decoMid->addChild(tank1);
+
+    std::cout << "✓ Cohete ensamblado:\n";
+    std::cout << "  Partes activas: " << pod->getAllParts().size() << "\n";
+    std::cout << "  Masa total:     " << std::fixed << std::setprecision(1)
+              << pod->getTreeMass() << " kg\n";
+
+    dvec3 com = pod->getTreeCoM();
+    std::cout << "  CoM local:      ("
+              << std::setprecision(3) << com.x << ", " << com.y << ", " << com.z
+              << ") m\n\n";
+
+    // ── Simulación de staging ────────────────────────────────────────────────
+    double earth_mu = Constants::MU_EARTH;
+    double earth_radius = 6371000.0 * Constants::KSP_SCALE;
+    double alt = 200000.0;
+    double r_mag = earth_radius + alt;
+    double v_mag = std::sqrt(earth_mu / r_mag);
+    dvec3 pos(r_mag, 0.0, 0.0);
+    dvec3 vel(0.0, v_mag, 0.0);
+    Orbit leo(pos, vel, earth_mu, 0.0);
+
+    CelestialBody earth_body("Earth", 5.972e24, earth_radius,
+                             86164.0, earth_mu, 9.81, true,
+                             100000.0 * Constants::KSP_SCALE);
+
+    Vessel rocket("Rocket2Stage", 0.0, leo, "Earth", &earth_body);
+    rocket.setRootPart(pod);
+
+    std::cout << "Masa antes del staging: " << std::setprecision(1)
+              << rocket.getTotalMass() << " kg\n";
+
+    auto stage1 = rocket.stage(); // separa Decoupler-2 y todo lo de abajo
+    if (stage1)
+    {
+        std::cout << "✓ Staging ejecutado\n";
+        std::cout << "  Nave principal:  " << std::setprecision(1)
+                  << rocket.getTotalMass() << " kg  ("
+                  << rocket.getAllParts().size() << " partes)\n";
+        std::cout << "  Etapa separada:  "
+                  << stage1->getTotalMass() << " kg\n";
+    }
+}
+
 int main()
 {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║           PROJECT PHOENIX - PHASE 1 DEMONSTRATION            ║
+║           PROJECT PHOENIX - PHASE 2 DEMONSTRATION            ║
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
-║              Orbital Mechanics & Propagation                 ║
+║     Orbital Mechanics · Part Hierarchy               ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -322,18 +406,16 @@ int main()
         example3_KeplanianPropagation();
         example4_VesselInOrbit();
         example5_ManeuverBasic();
+        example6_PartHierarchy();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                   EJEMPLOS COMPLETADOS                       ║
 ║                                                              ║
-║  Phase 1 establece:                                          ║
-║  • Propagación orbital Kepleriana (6 elementos)              ║
-║  • Resolución numérica de ecuación de Kepler                 ║
-║  • Sistema de cuerpos celestes y naves                       ║
-║  • Tiempo de simulación con time warp                        ║
+║  Phase 1 — Mecánica orbital Kepleriana (6 elementos)         ║
+║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
 ║                                                              ║
-║  Próxima fase: Arquitectura de partes y CoM                  ║
+║  Próxima fase: Sistema de propulsión                         ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";
