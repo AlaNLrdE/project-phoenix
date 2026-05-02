@@ -5,9 +5,13 @@
 #include <world/SphereOfInfluence.hpp>
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
+#include <physics/Atmosphere.hpp>
+#include <physics/AeroForces.hpp>
 #include <vessels/Vessel.hpp>
 #include <parts/Part.hpp>
 #include <parts/Engine.hpp>
+#include <ui/AsciiRenderer.hpp>
+#include <ui/MissionDisplay.hpp>
 #include <math/Constants.hpp>
 
 using namespace Phoenix::Math;
@@ -15,6 +19,7 @@ using namespace Phoenix::Physics;
 using namespace Phoenix::Vessels;
 using namespace Phoenix::World;
 using namespace Phoenix::Parts;
+using namespace Phoenix::UI;
 
 /**
  * Función auxiliar para imprimir vectores 3D.
@@ -607,15 +612,255 @@ void example8_SphereOfInfluence()
     }
 }
 
+/**
+ * Ejemplo 9: Re-entrada atmosférica con arrastre aerodinámico (Phase 5).
+ *
+ * Simula el descenso de una cápsula desde una órbita elíptica (apoapsis 400 km /
+ * periapsis 2 km, escala KSP 1:10) integrando numéricamente la gravedad y el
+ * arrastre D = ½ρv²CdA con RK4.  El calor de reentrada usa la fórmula de
+ * Chapman: q = 1.83×10⁻⁴ × √(ρ/R_nose) × v³.
+ */
+void example9_AtmosphericReentry()
+{
+    using namespace Phoenix::Physics;
+    std::cout << "\n╔════════════════════════════════════════╗\n";
+    std::cout << "║  EJEMPLO 9: Re-entrada Atmosférica(Ph5)║\n";
+    std::cout << "╚════════════════════════════════════════╝\n\n";
+
+    // ── Parámetros de la Tierra (escala KSP 1:10) ─────────────────────────
+    const double earthRadius = 6371000.0 * Constants::KSP_SCALE; // 637 100 m
+    const double earthMu = Constants::MU_EARTH;                  // 3.986×10¹⁴ m³/s²
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    std::cout << "Atmósfera (Earth, KSP 1:10):\n";
+    std::cout << std::fixed << std::setprecision(0);
+    std::cout << "  Altura total:   " << atm.atmosphereHeight / 1000.0 << " km\n";
+    std::cout << std::scientific << std::setprecision(3);
+    std::cout << "  ρ @ superficie: " << atm.getDensity(0.0) << " kg/m³ (1.225)\n";
+    std::cout << "  ρ @ 10 km:      " << atm.getDensity(10000.0) << " kg/m³\n\n";
+
+    // ── Parámetros de la cápsula ──────────────────────────────────────────
+    const double mass = 3000.0; // kg
+    const double area = 12.0;   // m²  (escudo ~4 m diámetro)
+    const double Cd = 1.5;      // blunt body
+    const double noseR = 2.0;   // m   (radio nariz del escudo)
+
+    std::cout << std::fixed;
+    std::cout << "Cápsula de reentrada:\n";
+    std::cout << "  Masa:        " << std::setprecision(0) << mass << " kg\n";
+    std::cout << "  Área ref.:   " << area << " m²\n";
+    std::cout << "  Cd:          " << std::setprecision(1) << Cd << "\n";
+    std::cout << "  Radio nariz: " << noseR << " m\n\n";
+
+    // ── Condiciones de entrada atmosférica ────────────────────────────────
+    // Órbita elíptica de deórbita: apoapsis 400 km / periapsis 2 km
+    // Condiciones calculadas en el punto de entrada (= top de atmósfera = 10 km)
+    // mediante mecánica orbital (conservación de h y energía vis-viva).
+    const double r_apo = earthRadius + 400000.0; // 1 037 100 m
+    const double r_peri = earthRadius + 2000.0;  //   639 100 m
+    const double a = 0.5 * (r_apo + r_peri);
+    const double ecc = (r_apo - r_peri) / (r_apo + r_peri);
+
+    const double r_entry = earthRadius + atm.atmosphereHeight; // 647 100 m
+    const double v_total = std::sqrt(earthMu * (2.0 / r_entry - 1.0 / a));
+
+    // Momento angular específico de la órbita
+    const double h_ang = std::sqrt(earthMu * a * (1.0 - ecc * ecc));
+    const double v_tang = h_ang / r_entry; // tangencial (+y)
+    const double v_rad = -std::sqrt(std::max(0.0, v_total * v_total - v_tang * v_tang));
+
+    dvec3 r0(r_entry, 0.0, 0.0);
+    dvec3 v0(v_rad, v_tang, 0.0);
+
+    const double entryAngle = Units::RAD_TO_DEG(std::atan2(-v_rad, v_tang));
+
+    std::cout << "Condiciones de entrada (altitud "
+              << std::setprecision(0) << atm.atmosphereHeight / 1000.0 << " km):\n";
+    std::cout << "  Velocidad total:   " << std::setprecision(1) << v_total << " m/s\n";
+    std::cout << "  v tangencial:      " << v_tang << " m/s\n";
+    std::cout << "  v radial:          " << v_rad << " m/s\n";
+    std::cout << "  Ángulo de entrada: " << std::setprecision(2) << entryAngle << "°\n\n";
+
+    // Velocidad terminal teórica en superficie (D = mg)
+    const double v_term = std::sqrt(2.0 * mass * 9.81 / (1.225 * Cd * area));
+    std::cout << "Vel. terminal teórica (cota): " << std::setprecision(1) << v_term
+              << " m/s (" << v_term * 3.6 << " km/h)\n\n";
+
+    // ── Ejecutar simulación RK4 ───────────────────────────────────────────
+    std::cout << "Simulando (RK4, dt=0.05 s, máx 100 000 pasos = 5 000 s)...\n\n";
+
+    auto result = AeroForces::simulate(
+        r0, v0,
+        mass, area, Cd, noseR,
+        earthRadius, earthMu, atm,
+        0.05,   // dt
+        100000, // maxSteps
+        5       // logInterval (log every 0.25 s)
+    );
+
+    // ── Mostrar trayectoria ───────────────────────────────────────────────
+    std::cout << std::setw(9) << "T(s)"
+              << std::setw(10) << "Alt(km)"
+              << std::setw(10) << "v(km/s)"
+              << std::setw(13) << "ρ(kg/m³)"
+              << std::setw(13) << "q(MW/m²)"
+              << std::setw(11) << "Drag(kN)"
+              << std::setw(8) << "a(g)\n";
+    std::cout << std::string(74, '-') << "\n";
+
+    // With logInterval=5 (every 0.25 s), print all points in atmosphere.
+    // In vacuum, print every 4th (every 1 s).
+    int vacuumCount = 0;
+    for (const auto &p : result.points)
+    {
+        bool inAtm = p.altitude < atm.atmosphereHeight;
+        if (!inAtm)
+        {
+            ++vacuumCount;
+            if (vacuumCount % 4 != 0)
+                continue;
+        }
+
+        double g_load = (mass > 0.0 && p.dragForce > 0.0)
+                            ? p.dragForce / (mass * 9.81)
+                            : 0.0;
+
+        std::cout << std::fixed
+                  << std::setw(9) << std::setprecision(2) << p.time
+                  << std::setw(10) << std::setprecision(2) << p.altitude / 1000.0
+                  << std::setw(10) << std::setprecision(3) << p.speed / 1000.0
+                  << std::setw(13) << std::scientific << std::setprecision(2) << p.density
+                  << std::setw(13) << std::fixed << std::setprecision(2) << p.heatFlux / 1e6
+                  << std::setw(11) << std::setprecision(1) << p.dragForce / 1000.0
+                  << std::setw(8) << std::setprecision(1) << g_load << "\n";
+    }
+    std::cout << std::string(74, '-') << "\n\n";
+
+    // ── Resultado final ───────────────────────────────────────────────────
+    if (result.landed)
+    {
+        std::cout << "✓ ATERRIZAJE\n";
+        std::cout << "  Velocidad de impacto: " << std::setprecision(1)
+                  << result.impactSpeed << " m/s  ("
+                  << result.impactSpeed * 3.6 << " km/h)\n";
+    }
+    else if (result.burnedUp)
+    {
+        std::cout << "✗ DESTRUCCIÓN — flujo de calor superó 500 MW/m²\n";
+    }
+    else
+    {
+        std::cout << "⏱  Simulación terminada (5 000 s alcanzados)\n";
+    }
+
+    std::cout << "  Pico flujo de calor:  " << std::setprecision(1)
+              << result.peakHeatFlux / 1e6 << " MW/m²\n";
+    std::cout << "  Pico deceleración:    " << std::setprecision(0)
+              << result.peakDecel / 9.81 << " g\n";
+    std::cout << "  Puntos de trayectoria registrados: " << result.points.size() << "\n";
+}
+
+/**
+ * Ejemplo 10: Visualización ASCII — mapas orbitales y HUD de misión (Phase 6).
+ */
+void example10_Visualization()
+{
+    std::cout << "\n╔════════════════════════════════════════╗\n";
+    std::cout << "║  EJEMPLO 10: Visualización (Phase 6)   ║\n";
+    std::cout << "╚════════════════════════════════════════╝\n\n";
+
+    const double earthMu     = Constants::MU_EARTH;
+    const double earthRadius = 6371000.0 * Constants::KSP_SCALE;
+
+    CelestialBody earth("Earth", 5.972e24, earthRadius, 86164.0,
+                        earthMu, 9.81, true, 100000.0 * Constants::KSP_SCALE);
+
+    // ── A) Mapa orbital: LEO circular ─────────────────────────────────────
+    std::cout << "\u2500\u2500 A) \xc3\x93rbita circular LEO (200 km) "
+                 "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\n";
+
+    const double alt_leo = 200000.0;
+    const double r1      = earthRadius + alt_leo;
+    const double v1      = std::sqrt(earthMu / r1);
+    dvec3        pos1(r1, 0.0, 0.0);
+    dvec3        vel1(0.0, v1, 0.0);
+    Orbit        leo(pos1, vel1, earthMu, 0.0);
+
+    AsciiRenderer::displayOrbit(leo, earthRadius, "LEO 200 km");
+
+    // ── B) Mapa orbital: transferencia Hohmann ────────────────────────────
+    std::cout << "\n\u2500\u2500 B) Transferencia Hohmann LEO (200 km) \u2192 MEO (400 km) "
+                 "\u2500\u2500\u2500\u2500\n\n";
+
+    const double alt2  = 400000.0;
+    const double r2    = earthRadius + alt2;
+    const double a_tx  = (r1 + r2) / 2.0;
+    const double v_tx  = std::sqrt(earthMu * (2.0 / r1 - 1.0 / a_tx));
+    dvec3        vel_tx(0.0, v_tx, 0.0);
+    Orbit        hohmann(pos1, vel_tx, earthMu, 0.0);
+
+    AsciiRenderer::displayOrbit(hohmann, earthRadius, "Hohmann LEO\u2192MEO");
+
+    // ── C) HUD de control de misi\xc3\xb3n ─────────────────────────────────
+    std::cout << "\n\u2500\u2500 C) HUD de control de misi\xc3\xb3n "
+                 "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n";
+
+    Vessel phoenix("Phoenix-1", 3000.0, leo, "Earth", &earth);
+    phoenix.fuelMass    = 800.0;
+    phoenix.status      = "active";
+    const double t_hud  = leo.getPeriod() * 0.25;
+    phoenix.currentTime = t_hud;
+
+    MissionDisplay::printDashboard(phoenix, earth, t_hud);
+    MissionDisplay::printOrbitalElements(leo, earth);
+    MissionDisplay::printFuelReport(phoenix);
+    MissionDisplay::printManeuverNode("Hohmann \u0394V1 (pro-grado)",
+                                      v_tx - v1,
+                                      (v_tx - v1) / 2.5);
+
+    // ── D) Perfil ASCII de reentrada ──────────────────────────────────────
+    std::cout << "── D) Perfil gráfico de reentrada atmosférica "
+                 "─────────────────────────\n\n";
+
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    // Reentry conditions: de-orbit ellipse apo=400km / peri=2km, entry at atm top
+    const double r_apo  = earthRadius + 400000.0;
+    const double r_peri = earthRadius + 2000.0;
+    const double a_deo  = 0.5 * (r_apo + r_peri);
+    const double ecc    = (r_apo - r_peri) / (r_apo + r_peri);
+    const double r_ent  = earthRadius + atm.atmosphereHeight;
+    const double v_ent  = std::sqrt(earthMu * (2.0 / r_ent - 1.0 / a_deo));
+    const double h_ang  = std::sqrt(earthMu * a_deo * (1.0 - ecc * ecc));
+    const double v_tang = h_ang / r_ent;
+    const double v_rad  = -std::sqrt(std::max(0.0, v_ent * v_ent - v_tang * v_tang));
+
+    dvec3 r0(r_ent, 0.0, 0.0);
+    dvec3 v0(v_rad, v_tang, 0.0);
+
+    auto result = AeroForces::simulate(
+        r0, v0, 3000.0, 12.0, 1.5, 2.0,
+        earthRadius, earthMu, atm,
+        0.05, 100000, 5);
+
+    AsciiRenderer::displayReentryProfile(result, "Reentrada KSP-Scale");
+
+    if (result.landed)
+        std::cout << "  Impacto: " << std::fixed << std::setprecision(1)
+                  << result.impactSpeed << " m/s  |  "
+                  << "Pico calor: " << result.peakHeatFlux / 1e6 << " MW/m\xc2\xb2"
+                  << "  |  " << result.points.size() << " puntos\n";
+}
+
 int main()
 {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║           PROJECT PHOENIX - PHASE 4 DEMONSTRATION            ║
+║           PROJECT PHOENIX - PHASE 6 DEMONSTRATION            ║
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
-║   Orbital Mechanics · Parts · Propulsion · Esferas de SoI   ║
+║  Orbital Mechanics · Parts · Propulsion · SoI · Aero · UI   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -630,6 +875,8 @@ int main()
         example6_PartHierarchy();
         example7_Propulsion();
         example8_SphereOfInfluence();
+        example9_AtmosphericReentry();
+        example10_Visualization();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -639,8 +886,8 @@ int main()
 ║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
 ║  Phase 3 — Motor cohete, Tsiolkovsky, burn pro-grado         ║
 ║  Phase 4 — Esferas de influencia, transición SoI            ║
-║                                                              ║
-║  Próxima fase: Aerodinámica y re-entrada                     ║
+║  Phase 5 — Atmósfera ISA, arrastre D=½ρv²CdA, RK4           ║
+║  Phase 6 — Visualización ASCII: mapas orbitales, HUD         ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";

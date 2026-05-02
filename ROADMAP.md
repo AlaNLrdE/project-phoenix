@@ -8,8 +8,8 @@
 | 2    | ✅      | Jerarquía de partes                   |
 | 3    | ✅      | Propulsión (Engine, Tsiolkovsky)       |
 | 4    | ✅      | Esferas de influencia (SoI)           |
-| 5    | 🔄     | Aerodinámica y reentrada              |
-| 6    | ⏳     | Visualización / UI                    |
+| 5    | ✅      | Aerodinámica y reentrada              |
+| 6    | 🔄     | Visualización / UI                    |
 
 ---
 
@@ -86,15 +86,36 @@
 
 ---
 
-## 🔄 Fase 5 — Aerodinámica y reentrada (Planificada)
+## 🔄 Fase 5 — Aerodinámica y reentrada
 
-- [ ] Modelo de atmósfera exponencial por capas
-- [ ] Presión dinámica: D = ½ρv²CdA
-- [ ] Fuerza de arrastre por parte según geometría
-- [ ] Calentamiento aerodinámico y ablación de escudo térmico
-- [ ] Apogeo/perigeo dinámico bajo fricción atmosférica
-- [ ] Integración con `Vessel::executeBurn` (drag en el burn loop)
-- [ ] Ejemplo: trayectoria balística de reentrada desde LEO
+**Commit:** (pendiente)
+
+- ✅ Modelo de atmósfera exponencial por capas (`Atmosphere`, 5 capas ISA)
+- ✅ Presión dinámica: D = ½ρv²CdA
+- ✅ Flujo de calor de Chapman: q = 1.83×10⁻⁴ √(ρ/R) v³ [W/m²]
+- ✅ Integrador numérico RK4 de 4to orden (gravedad + arrastre)
+- ✅ Simulación de trayectoria de reentrada completa (`AeroForces::simulate`)
+- ✅ `Vessel::simulateReentry()` integrado con la nave
+- ✅ Ejemplo 9: cápsula de reentrada desde órbita elíptica de deórbita
+
+---
+
+## 🔄 Fase 6 — Visualización / UI
+
+**Commit:** (pendiente)
+
+- ✅ `AsciiRenderer`: canvas 2D de caracteres con viewport configurable
+- ✅ Dibujado de órbitas en el plano perifocal (`drawOrbit`)
+- ✅ Dibujado del cuerpo central como círculo sólido (`drawBody`)
+- ✅ Marcadores de periapsis (P) y apoapsis (A)
+- ✅ Corrección de relación de aspecto de caracteres monoespaciados
+- ✅ Perfil gráfico altitud-velocidad de reentrada (`displayReentryProfile`)
+- ✅ `MissionDisplay`: HUD de telemetría de vuelo en terminal
+  - Panel completo de control de misión (`printDashboard`)
+  - Tabla de elementos orbitales Keplerianos (`printOrbitalElements`)
+  - Informe de combustible con barra de progreso (`printFuelReport`)
+  - Nodo de maniobra con ΔV y tiempo de quemado (`printManeuverNode`)
+- ✅ Ejemplo 10: demostración de mapas orbitales y HUD de misión
 
 ---
 
