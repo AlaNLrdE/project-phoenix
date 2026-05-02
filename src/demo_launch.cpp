@@ -12,17 +12,24 @@
  *   - Trail de trayectoria, separación de etapas, cámara de seguimiento
  *   - HUD de telemetría en tiempo real (altitud, velocidad, etapa activa)
  *
+ * Phase 8C — Ascent guidance (mismo modo L, guiado mejorado):
+ *   - GuidanceLaw: pitch program altitud-dependiente, Max-Q throttle
+ *   - El motor se corta cuando apoapsis = 40 km (400 km real @ KSP scale)
+ *   - Anillo de órbita objetivo visible en 3D
+ *   - Marcador Max-Q en el trail (punto azul brillante)
+ *   - Flash de "ORBIT INSERTION" al alcanzar la apoapsis objetivo
+ *
  * Controles:
  *   V                              — modo stack viewer (Phase 8A)
- *   L                              — modo launch animation (Phase 8B)
- *   Ratón botón izq. + arrastrar   — rotar cámara
- *   Scroll                          — zoom
- *   R                               — reset cámara
- *   ESPACIO                         — pausar/reanudar (modo launch)
- *   1/2/3/4                         — velocidad de simulación x1/x5/x20/x100
- *   E                               — exploded view (modo stack)
- *   Tab / 0-2                       — seleccionar etapa (modo stack)
- *   ESC                             — salir
+ *   L                              — modo launch animation (Phase 8B/8C)
+ *   Raton boton izq. + arrastrar   — rotar camara
+ *   Scroll                         — zoom
+ *   R                              — reset camara
+ *   ESPACIO                        — pausar/reanudar (modo launch)
+ *   1/2/3/4                        — velocidad de simulacion x1/x5/x20/x100
+ *   E                              — exploded view (modo stack)
+ *   Tab / 0-2                      — seleccionar etapa (modo stack)
+ *   ESC                            — salir
  */
 
 #include <raylib.h>
@@ -31,6 +38,7 @@
 
 #include <launch/LaunchVehicle.hpp>
 #include <launch/AscentIntegrator.hpp>
+#include <launch/GuidanceLaw.hpp>
 #include <physics/CelestialBody.hpp>
 #include <physics/Atmosphere.hpp>
 #include <math/Constants.hpp>
@@ -194,28 +202,23 @@ static void drawRocketAt(Vector3 pos, Vector3 velDir, float scale, int activeSta
 
 int main()
 {
-    // ── Launch vehicle ────────────────────────────────────────────────────────
-    LaunchVehicle soyuz("Soyuz-FG (KSP 0.1)");
+    // ── Launch vehicle — Atlas-K (TWR ~1.37, sequential staging, Phase 8C) ──
+    // Low TWR gives a longer ~147s Stage-0 burn, giving the pitch program time
+    // to build enough horizontal velocity so the engine-cutoff condition fires.
+    LaunchVehicle soyuz("Atlas-K (KSP 0.1)");
     {
-        StageConfig b; b.name="Boosters"; b.strutMass=800; b.decouplerMass=120;
-        b.hasDecoupler=true;
-        b.engines.push_back({"RD-107A",1100,838800,310.7,4});
-        b.tanks.push_back({"BoosterTank",3200,39600});
-        soyuz.addStage(b);
+        StageConfig s0; s0.name="Booster"; s0.strutMass=100; s0.decouplerMass=50;
+        s0.hasDecoupler=true;
+        s0.engines.push_back({"RD-180K", 200, 180000, 300, 1});
+        s0.tanks.push_back({"S1-Tank", 600, 9000});
+        soyuz.addStage(s0);
     }
     {
-        StageConfig c; c.name="CoreStage"; c.strutMass=600; c.decouplerMass=80;
-        c.hasDecoupler=true;
-        c.engines.push_back({"RD-108A",1250,792400,314.2,1});
-        c.tanks.push_back({"CoreTank",6900,91400});
-        soyuz.addStage(c);
-    }
-    {
-        StageConfig u; u.name="UpperStage"; u.strutMass=200; u.hasDecoupler=false;
-        u.engines.push_back({"RD-0110",410,297900,326.0,1});
-        u.tanks.push_back({"UpperTank",2355,22000});
-        u.tanks.push_back({"SoyuzCapsule",2800,0});
-        soyuz.addStage(u);
+        StageConfig s1; s1.name="UpperStage"; s1.strutMass=30; s1.hasDecoupler=false;
+        s1.engines.push_back({"RL10K", 100, 90000, 350, 1});
+        s1.tanks.push_back({"S2-Tank", 300, 2500});
+        s1.tanks.push_back({"Capsule", 500, 0});
+        soyuz.addStage(s1);
     }
 
     // ── Pre-computar trayectoria de ascenso (Phase 8B) ────────────────────────
@@ -225,10 +228,19 @@ int main()
         9.81, true, 70000.0 * Constants::KSP_SCALE);
     Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
 
+    // ── Phase 8C: guided ascent to 40 km apoapsis ───────────────────────────
+    GuidanceLaw guidance;
+    guidance.hKick          = 200.0;
+    guidance.hTurn          = 6000.0;
+    guidance.maxQLimit      = 35000.0;
+    guidance.maxQThrottle   = 0.75;
+    guidance.targetApoapsis = 40000.0;   // 40 km (= 400 km real @ KSP 0.1 scale)
+
     AscentIntegrator integrator(soyuz, earth, &atm);
     integrator.setThrottle(1.0);
     integrator.setRecordInterval(10);
-    AscentResult ascent = integrator.simulate(0.05, 800.0, 0.0);
+    integrator.setGuidance(guidance);
+    AscentResult ascent = integrator.simulate(0.05, 900.0, 0.0);
 
     // Convertir trayectoria a render space
     std::vector<Vector3> trailRender;
@@ -236,9 +248,30 @@ int main()
     for (const auto &pt : ascent.trajectory)
         trailRender.push_back(p2r(pt.position));
 
+    // Encontrar índice de Max-Q en la trayectoria muestreada
+    int maxQIdx = 0;
+    double maxQVal = 0.0;
+    for (int i = 0; i < (int)ascent.trajectory.size(); ++i) {
+        if (ascent.trajectory[i].dynPressure > maxQVal) {
+            maxQVal = ascent.trajectory[i].dynPressure;
+            maxQIdx = i;
+        }
+    }
+
+    // Índice de engine cutoff (inserción orbital)
+    int cutoffIdx = -1;
+    for (int i = 0; i < (int)ascent.trajectory.size(); ++i) {
+        if (ascent.trajectory[i].time >= ascent.cutoffTime && ascent.orbitInserted) {
+            cutoffIdx = i; break;
+        }
+    }
+
+    // Radio del anillo de órbita objetivo en render space
+    float targetOrbitR = (float)((earth.radius + guidance.targetApoapsis) * P2R);
+
     // ── Window ───────────────────────────────────────────────────────────────
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_MSAA_4X_HINT);
-    InitWindow(1280, 720, "Project Phoenix — Launch Viewer (8A+8B)");
+    InitWindow(1280, 720, "Project Phoenix — Launch Viewer (8A+8B+8C)");
     SetTargetFPS(60);
 
     // ── Estado de UI ─────────────────────────────────────────────────────────
@@ -252,8 +285,10 @@ int main()
     double timeScale  = 1.0;
     bool   paused     = false;
     int    curPtIdx   = 0;   // índice en trajectory
-    float  stagingFlash = 0.0f;    // timer para flash STAGING
-    int    lastStagingIdx = 0;
+    float  stagingFlash    = 0.0f;
+    int    lastStagingIdx  = 0;
+    float  insertionFlash  = 0.0f;  // flash de "ORBIT INSERTION" (8C)
+    bool   insertionShown  = false;
 
     // ── Cámara ────────────────────────────────────────────────────────────────
     Camera3D camera = {};
@@ -299,6 +334,7 @@ int main()
             mode = Mode::Launch;
             simTime = 0.0; curPtIdx = 0; paused = false;
             stagingFlash = 0.0f; lastStagingIdx = 0;
+            insertionFlash = 0.0f; insertionShown = false;
             // Ajustar cámara para vista orbital
             camDist = 5.0f; camPitch = 10.0f; camYaw = 30.0f;
         }
@@ -353,6 +389,14 @@ int main()
                     lastStagingIdx++;
                 }
                 stagingFlash -= dt;
+
+                // Detectar engine cutoff / orbit insertion (Phase 8C)
+                if (!insertionShown && ascent.orbitInserted &&
+                    simTime >= ascent.cutoffTime) {
+                    insertionFlash = 3.5f;
+                    insertionShown = true;
+                }
+                insertionFlash -= dt;
             }
 
             // Cámara sigue al cohete en modo launch
@@ -437,16 +481,38 @@ int main()
             float atmR = (float)((earth.radius + atm.atmosphereHeight) * P2R);
             DrawSphereWires({0,0,0}, atmR, 8, 8, {80, 140, 220, 40});
 
+            // Anillo de órbita objetivo (Phase 8C) — círculo en el plano ecuatorial
+            {
+                const int  segs  = 64;
+                const float twoPi = 6.2832f;
+                for (int k = 0; k < segs; ++k) {
+                    float a0 = (float)k       / segs * twoPi;
+                    float a1 = (float)(k + 1) / segs * twoPi;
+                    Vector3 p0 = { targetOrbitR * std::cos(a0), 0.0f, targetOrbitR * std::sin(a0) };
+                    Vector3 p1 = { targetOrbitR * std::cos(a1), 0.0f, targetOrbitR * std::sin(a1) };
+                    DrawLine3D(p0, p1, { 80, 220, 80, 60 });
+                }
+            }
+
             // Trail de trayectoria (hasta el punto actual)
             int drawTo = std::min(curPtIdx + 1, (int)trailRender.size());
             for (int i = 1; i < drawTo; ++i) {
                 float t = (float)i / (float)trailRender.size();
                 unsigned char alpha = (unsigned char)(80 + 150 * t);
-                // Color por etapa
                 int stIdx = ascent.trajectory[i].stageIndex;
                 Color tc = stageColor(stIdx, soyuz.stageCount(), false);
                 tc.a = alpha;
                 DrawLine3D(trailRender[i-1], trailRender[i], tc);
+            }
+
+            // Marcador Max-Q (Phase 8C) — punto azul en el trail
+            if (maxQIdx > 0 && maxQIdx < (int)trailRender.size()) {
+                DrawSphere(trailRender[maxQIdx], earthR * 0.025f, { 60, 140, 255, 220 });
+            }
+
+            // Marcador engine cutoff / orbit insertion
+            if (cutoffIdx > 0 && cutoffIdx < (int)trailRender.size()) {
+                DrawSphere(trailRender[cutoffIdx], earthR * 0.03f, { 80, 255, 120, 220 });
             }
 
             // Posición actual del cohete
@@ -519,7 +585,7 @@ int main()
         } else {
             // ── HUD lanzamiento ───────────────────────────────────────────────
             int px = 1280-260, py=10;
-            hudBox(px, py, 248, 220);
+            hudBox(px, py, 248, 240);
             DrawText("ASCENT TELEMETRY", px+8, py+6, 14, {80,200,255,255});
             int ry = py+26;
             if (curPtIdx < (int)ascent.trajectory.size()) {
@@ -527,6 +593,9 @@ int main()
                 hudRow(px+8,ry,"Mission time", fmt(pt.time,1)+" s"); ry+=18;
                 hudRow(px+8,ry,"Altitude",     fmt(pt.altitude/1000.,2)+" km"); ry+=18;
                 hudRow(px+8,ry,"Speed",        fmt(pt.speed,1)+" m/s"); ry+=18;
+                hudRow(px+8,ry,"Dyn. Press.",  fmt(pt.dynPressure/1000.,1)+" kPa",
+                    pt.dynPressure > guidance.maxQLimit
+                        ? Color{255,80,80,255} : Color{200,200,200,220}); ry+=18;
                 hudRow(px+8,ry,"Mass",         fmt(pt.mass/1000.,1)+" t"); ry+=18;
                 hudRow(px+8,ry,"Thrust",       fmt(pt.thrust/1000.,1)+" kN"); ry+=18;
                 hudRow(px+8,ry,"Drag",         fmt(pt.drag/1000.,2)+" kN"); ry+=18;
@@ -538,14 +607,18 @@ int main()
             }
             hudRow(px+8,ry,"Time scale", "x"+fmt(timeScale,0));
 
-            // Resultado final si ya llegamos al fin
-            if (curPtIdx >= (int)ascent.trajectory.size()-1 && !ascent.trajectory.empty()) {
-                hudBox(px, py+230, 248, 80);
-                DrawText("FINAL ORBIT", px+8, py+236, 13, {100,255,100,255});
-                int ry2 = py+254;
-                hudRow(px+8,ry2,"Apoapsis",  fmt(ascent.apoapsis/1000.,1)+" km"); ry2+=18;
-                hudRow(px+8,ry2,"Periapsis", fmt(ascent.periapsis/1000.,1)+" km");
-            }
+            // Panel órbita (Phase 8C)
+            hudBox(px, py+250, 248, 100);
+            DrawText(ascent.orbitInserted ? "ORBIT INSERTION" : "FINAL ORBIT",
+                     px+8, py+256, 13,
+                     ascent.orbitInserted ? Color{100,255,100,255} : Color{200,200,200,220});
+            int ry2 = py+274;
+            hudRow(px+8,ry2,"Target apo",  fmt(guidance.targetApoapsis/1000.,0)+" km"); ry2+=18;
+            hudRow(px+8,ry2,"Apoapsis",    fmt(ascent.apoapsis/1000.,1)+" km",
+                             ascent.orbitInserted ? Color{100,255,100,255} : WHITE); ry2+=18;
+            hudRow(px+8,ry2,"Periapsis",   fmt(ascent.periapsis/1000.,1)+" km"); ry2+=18;
+            hudRow(px+8,ry2,"Max-Q",       fmt(ascent.maxDynPressure/1000.,1)+" kPa @ "
+                             +fmt(ascent.maxDynPressureAlt/1000.,1)+" km");
 
             // Flash de separación de etapa
             if (stagingFlash > 0.0f) {
@@ -554,13 +627,23 @@ int main()
                 std::string msg = "  STAGING! " +
                     (sIdx < soyuz.stageCount() ? soyuz.getStage(sIdx).name : "stage") +
                     " jettisoned";
-                DrawRectangle(300, 320, 680, 40, {30,30,30,(unsigned char)(alpha*0.7f)});
-                DrawText(msg.c_str(), 320, 330, 22, {255, 200, 60, alpha});
+                DrawRectangle(300, 310, 680, 38, {30,30,30,(unsigned char)(alpha*0.7f)});
+                DrawText(msg.c_str(), 320, 320, 22, {255, 200, 60, alpha});
+            }
+
+            // Flash de inserción orbital (Phase 8C)
+            if (insertionFlash > 0.0f) {
+                unsigned char alpha = (unsigned char)(std::min(1.0f, insertionFlash) * 255);
+                std::string apo = fmt(ascent.apoapsis / 1000.0, 1) + " km";
+                std::string msg = "  ORBIT INSERTION  apo = " + apo + "  ENGINE CUTOFF";
+                DrawRectangle(200, 355, 880, 42, {10,30,10,(unsigned char)(alpha*0.85f)});
+                DrawRectangleLines(200, 355, 880, 42, {80, 255, 120, alpha});
+                DrawText(msg.c_str(), 220, 366, 20, {120, 255, 140, alpha});
             }
 
             // Controles launch
-            hudBox(10, 720-60, 540, 48);
-            DrawText("SPACE: pausa | 1/2/3/4: x1/x5/x20/x100 | R: reset camara | V: stack viewer",
+            hudBox(10, 720-60, 560, 48);
+            DrawText("SPACE: pausa | 1/2/3/4: x1/x5/x20/x100 | R: reset cam | V: stack",
                      18, 720-52, 11, {200,200,200,200});
             DrawText((paused ? "PAUSADO" : ("x"+fmt(timeScale,0)+" speed")).c_str(),
                      18, 720-36, 13, paused ? Color{255,100,100,220} : Color{100,255,100,220});

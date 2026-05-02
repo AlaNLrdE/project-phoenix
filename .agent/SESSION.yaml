@@ -1,7 +1,7 @@
 project: Phoenix
 phase: 8
 date: "2026-05-01"
-status: ACTIVE (Phase 8A complete)
+status: ACTIVE (Phase 8C complete)
 language: C++20
 scale: KSP_0.1
 loc: 5800+
@@ -11,7 +11,7 @@ git:
   local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "dd6dcfc"
+  commit_hash: "a4a0d63"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
 
@@ -40,6 +40,12 @@ phases_complete:
   - phase: "8A"
     commit: "dd6dcfc"
     description: "LaunchVehicle, StageConfig — DeltaV Tsiolkovsky, TWR, CoM shift, Part tree assembly"
+  - phase: "8B"
+    commit: "a4a0d63"
+    description: "AscentIntegrator RK4 (thrust+gravity+drag), launchStage(), demo_launch animation mode"
+  - phase: "8C"
+    commit: "TBD"
+    description: "GuidanceLaw — altitude-based pitch program (0→45° smoothstep), Max-Q throttle clamp, engine cutoff at target apoapsis (dual condition: apo>=target AND tanVel>=radVel)"
 
 files:
   include:
@@ -57,6 +63,8 @@ files:
     - world/SphereOfInfluence.hpp
     - launch/StageConfig.hpp
     - launch/LaunchVehicle.hpp
+    - launch/AscentIntegrator.hpp
+    - launch/GuidanceLaw.hpp
   src:
     - main.cpp
     - demo_3d.cpp          # Phase 7 — visor orbital 3D
@@ -73,6 +81,7 @@ files:
     - world/WorldManager.cpp
     - world/SphereOfInfluence.cpp
     - launch/LaunchVehicle.cpp
+    - launch/AscentIntegrator.cpp
   config:
     - CMakeLists.txt
     - build.sh
@@ -151,6 +160,26 @@ classes:
     members: [name, engines, tanks, strutMass, decouplerMass, hasDecoupler]
     helpers: [EngineSpec, TankSpec]
 
+  AscentIntegrator:
+    size_kb: 8.0
+    namespace: Phoenix::Launch
+    members: [veh, body, atm, throttle, recordInterval, guidance]
+    methods:
+      - simulate          # RK4 loop, multi-stage, returns AscentResult
+      - setThrottle       # [0,1] throttle
+      - setRecordInterval # n pasos entre muestras
+      - setGuidance       # GuidanceLaw (pitch program + Max-Q + target apoapsis)
+    structs: [AscentPoint, AscentResult]
+    integration: RK4
+    forces: [thrust, gravity_ECI, atmospheric_drag]
+    guidance_8C: "altitude-based pitch 0°→45° (smoothstep hKick→hTurn), prograde tracking above hTurn"
+
+  GuidanceLaw:
+    size_kb: 0.5
+    namespace: Phoenix::Launch
+    members: [hKick, hTurn, maxQLimit, maxQThrottle, targetApoapsis]
+    note: "hKick=200m pitch start, hTurn=6000m pitch 45° (prograde), maxQ clamp at 35kPa, targetApo=40km"
+
   Constants:
     size_kb: 1.5
     defines:
@@ -168,7 +197,7 @@ namespaces:
   Phoenix::Vessels: "Vessel"
   Phoenix::World: "WorldManager, SphereOfInfluence"
   Phoenix::UI: "AsciiRenderer, MissionDisplay"
-  Phoenix::Launch: "StageConfig, LaunchVehicle"
+  Phoenix::Launch: "StageConfig, LaunchVehicle, AscentIntegrator, GuidanceLaw"
 
 physics:
   kepler_equation: "M = E - e*sin(E)"
@@ -235,16 +264,53 @@ examples:
   ex4: "WorldManager_integration"
   ex5: "Hohmann_transfer_deltaV"
   ex_8a: "LaunchVehicle_Soyuz_3stage_analysis"
+  ex_8b: "AscentIntegrator_Soyuz_RK4_trajectory"
 
 next_phase:
-  name: Phase8B_LaunchSequence
-  estimated_loc: 400
-  description: "Staged rocket launch — ignition sequence, staging logic, separation physics"
+  name: Phase8D_OrbitalManeuvers
+  estimated_loc: 300
+  description: "Orbital maneuvers — circularization burn at apoapsis (Hohmann), delta-V budget, porkchop"
   tasks:
-    - "8B-1: AscentIntegrator — RK4 integrador posición/velocidad bajo empuje + gravedad"
-    - "8B-2: StagingController — detecta agotamiento de combustible, dispara separación"
-    - "8B-3: Vessel::launchStage() — separación bottom-up (booster primero)"
-    - "8B-4: demo_launch.cpp — animación de lanzamiento en 3D con separación de etapas"
+    - "8D-1: CircularizationBurn — compute delta-V at apoapsis to raise periapsis to circular"
+    - "8D-2: Integrate with AscentResult — hand off state vector to Orbit class after cutoff"
+    - "8D-3: Show circularized orbit in demo_launch.cpp (second ring after insertion)"
+    - "8D-4: Update console demo with circularization delta-V display"
+
+checklist_phase8c:
+  GuidanceLaw_hpp: true
+  altitude_pitch_program: true       # smoothstep 0°→45° from vertical (hKick→hTurn)
+  prograde_tracking_above_hTurn: true
+  maxQ_throttle_clamp: true          # q > 35 kPa → throttle 0.75
+  engine_cutoff_dual_condition: true # apo>=target AND tanVel>=radVel
+  orbit_insertion_recorded: true     # cutoffTime, cutoffAlt, cutoffSpeed, apo, peri
+  AscentResult_dynPressure: true
+  static_bool_peakPassed_fixed: true # was persisting across simulate() calls
+  vehicle_AtlasK_TWR137: true        # low TWR for sufficient gravity turn time
+  demo_launch_orbit_ring: true       # green orbit ring at 40 km
+  demo_launch_maxQ_marker: true      # blue dot on trail at Max-Q
+  demo_launch_cutoff_marker: true    # green dot on trail at engine cutoff
+  demo_launch_insertion_flash: true  # green flash "ORBIT INSERTION" in HUD
+  demo_launch_hud_dynpressure: true  # dynPressure row with red highlight
+  demo_launch_orbit_panel: true      # apo/peri/Max-Q final orbit panel
+  build_ok: true
+  orbit_inserted: true               # orbitInserted=SI, apoapsis=40km, peri=-363km
+  commit: "TBD"
+
+checklist_phase8b:
+  AscentIntegrator_hpp: true
+  AscentIntegrator_cpp: true
+  AscentPoint_struct: true
+  AscentResult_struct: true
+  RK4_integration: true
+  gravity_drag_thrust_forces: true
+  multi_stage_separation: true
+  orbital_elements_from_final_state: true
+  Vessel_launchStage: true
+  cmake_updated: true
+  demo_phase8B_main: true
+  demo_launch_animation_mode: true
+  build_ok: true
+  commit: "a4a0d63"
 
 checklist_phase8a:
   StageConfig: true

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <launch/LaunchVehicle.hpp>
+#include <launch/GuidanceLaw.hpp>
 #include <physics/CelestialBody.hpp>
 #include <physics/Atmosphere.hpp>
 #include <math/Constants.hpp>
@@ -22,6 +23,7 @@ struct AscentPoint {
     double speed;      ///< m/s, módulo de velocidad
     double thrust;     ///< N, empuje actual
     double drag;       ///< N, arrastre aerodinámico actual
+    double dynPressure;///< Pa, presión dinámica ½ρv²
     int    stageIndex; ///< etapa activa en este instante (0 = booster)
 };
 
@@ -31,15 +33,26 @@ struct AscentResult {
     std::vector<AscentPoint> trajectory;  ///< puntos muestreados de la trayectoria
     double maxAltitude   = 0.0;  ///< m — altitud máxima alcanzada
     double maxSpeed      = 0.0;  ///< m/s — velocidad máxima
-    double apoapsis      = 0.0;  ///< m sobre superficie (del estado final)
+    double apoapsis      = 0.0;  ///< m sobre superficie (del estado en engine cutoff o final)
     double periapsis     = 0.0;  ///< m sobre superficie
-    double totalBurnTime = 0.0;  ///< s — tiempo total de quemado
+    double totalBurnTime = 0.0;  ///< s — tiempo total de quemado (hasta engine cutoff)
     int    stagesUsed    = 0;    ///< número de etapas separadas
     bool   reachedSpace  = false;///< altitud > Karman line del cuerpo
-    std::string exitReason;      ///< "target altitude" | "fuel depleted" | "crashed" | ...
+    bool   orbitInserted = false;///< apoapsis target was reached and engine was cut
+    std::string exitReason;      ///< "target apoapsis" | "fuel depleted" | "crashed" | ...
 
     /// Tiempos de separación de etapa (s desde liftoff), indexados por stageIndex separado.
     std::vector<double> stagingTimes;
+
+    // ── Max-Q ────────────────────────────────────────────────────────────────
+    double maxDynPressure    = 0.0;  ///< Pa — peak dynamic pressure
+    double maxDynPressureTime= 0.0;  ///< s  — time of Max-Q
+    double maxDynPressureAlt = 0.0;  ///< m  — altitude of Max-Q
+
+    // ── Engine cutoff state (Phase 8C+) ──────────────────────────────────────
+    double cutoffTime        = 0.0;  ///< s — when engine was cut
+    double cutoffAltitude    = 0.0;  ///< m — altitude at engine cutoff
+    double cutoffSpeed       = 0.0;  ///< m/s — speed at engine cutoff
 };
 
 // ── Integrador de ascenso ────────────────────────────────────────────────────
@@ -55,10 +68,16 @@ struct AscentResult {
  *   F_gravity = -mu/|r|^3 * r * m
  *   F_drag    = -½ρv²CdA * v̂  (solo dentro de la atmósfera)
  *
- * Dirección de empuje (Phase 8B — gravity turn simple):
- *   t < 5 s   : vertical (radial desde el centro)
- *   5–60 s    : interpolación cuadrática vertical→prograde
- *   t ≥ 60 s  : prograde (dirección de velocidad)
+ * Dirección de empuje (Phase 8C — pitch program altitud-dependiente):
+ *   alt < hKick     : radial (vertical)
+ *   hKick–hTurn     : smoothstep blend radial → prograde
+ *   alt ≥ hTurn     : prograde (gravity turn completo)
+ *
+ * Max-Q throttle:
+ *   Si q = ½ρv² > guidance.maxQLimit → throttle clamped a guidance.maxQThrottle
+ *
+ * Engine cutoff:
+ *   Si guidance.targetApoapsis > 0 y apoapsis ≥ target → engine off, coast phase
  *
  * Separación de etapas:
  *   Cuando la etapa activa agota su propelante, se jettisona (masa seca
@@ -67,7 +86,7 @@ struct AscentResult {
 class AscentIntegrator {
 public:
     /**
-     * @param vehicle  Vehículo de lanzamiento (LeunchVehicle ya construido)
+     * @param vehicle  Vehículo de lanzamiento (LaunchVehicle ya construido)
      * @param body     Cuerpo de referencia (Tierra, etc.)
      * @param atm      Modelo de atmósfera. nullptr = vacío total.
      */
@@ -84,13 +103,17 @@ public:
      */
     void setRecordInterval(int n) { recordInterval = std::max(1, n); }
 
+    /** Reemplazar la ley de guiado completa. */
+    void setGuidance(const GuidanceLaw& g) { guidance = g; }
+
     /**
      * Ejecuta la simulación de ascenso.
      *
      * @param dt            Paso de integración RK4 (s). Recomendado ≤ 0.1 s.
      * @param maxTime       Tiempo máximo de simulación (s). Safety limit.
      * @param targetAlt     Si > 0: parar cuando altitud ≥ targetAlt (m).
-     *                      Si = 0: simular hasta agotar combustible.
+     *                      Si = 0: simular hasta agotar combustible o
+     *                              guidance.targetApoapsis (si configurado).
      * @return AscentResult con trayectoria completa y métricas orbitales.
      */
     AscentResult simulate(double dt        = 0.05,
@@ -101,21 +124,21 @@ private:
     const LaunchVehicle&          veh;
     const Physics::CelestialBody& body;
     const Physics::Atmosphere*    atm;
-    double throttle       = 1.0;
-    int    recordInterval = 20;
+    double      throttle       = 1.0;
+    int         recordInterval = 20;
+    GuidanceLaw guidance;
 
     /// Aceleración gravitatoria en `pos` (m/s²)
     dvec3 gravAccel(const dvec3& pos) const;
 
-    /// Aceleración de drag en `pos` con velocidad `vel` (m/s²)
-    dvec3 dragAccel(const dvec3& pos, const dvec3& vel,
-                    double mass, double area, double Cd) const;
-
-    /// Dirección unitaria de empuje en función del tiempo y estado
-    dvec3 thrustDir(const dvec3& pos, const dvec3& vel, double t) const;
+    /// Dirección unitaria de empuje en función de la altitud y estado (Phase 8C)
+    dvec3 thrustDir(const dvec3& pos, const dvec3& vel) const;
 
     /// Área de referencia del vehículo (m²) desde la sección del primer stage activo
     static double crossSection(const StageConfig& s);
+
+    /// Apoapsis instantánea (m sobre superficie); retorna -body.radius si e≥0
+    double instantApoapsis(const dvec3& pos, const dvec3& vel) const;
 };
 
 } // namespace Phoenix::Launch

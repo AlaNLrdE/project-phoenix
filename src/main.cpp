@@ -970,6 +970,128 @@ void demo_phase8B()
 }
 
 /**
+ * Phase 8C — Ascent Guidance: pitch program, Max-Q, orbit insertion.
+ *
+ * Mejoras sobre Phase 8B:
+ *   - Pitch program basado en altitud (no en tiempo): más robusto
+ *   - Detección de Max-Q y reducción de empuje durante la zona de máxima presión dinámica
+ *   - Motor corta cuando apoapsis alcanza la altitud objetivo → órbita elíptica real
+ *   - La trayectoria ya NO alcanza velocidad de escape
+ */
+void demo_phase8C()
+{
+    std::cout << "\n╔══════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║        PHASE 8C — ASCENT GUIDANCE (Pitch + Max-Q + Orbit)   ║\n";
+    std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
+
+    CelestialBody earth(
+        "Earth", 5.972e24,
+        6371000.0 * Constants::KSP_SCALE, 86164.0,
+        Constants::MU_EARTH * Constants::KSP_SCALE * Constants::KSP_SCALE,
+        9.81, true, 70000.0 * Constants::KSP_SCALE);
+
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    // Atlas-K: 2-stage with TWR ~1.37 at liftoff.
+    // A high-TWR rocket (like the Falcon-K at 2.4) shoots through the atmosphere
+    // too fast for the gravity turn to work — tanVel never exceeds radVel.
+    // Lower TWR gives the pitch program time to build meaningful horizontal velocity.
+    LaunchVehicle falcon("Atlas-K (KSP 0.1)");
+    {
+        // Stage 0 — First Stage (Atlas-class, TWR ~1.37 at liftoff, 147s burn)
+        StageConfig s0; s0.name="Booster"; s0.strutMass=100; s0.decouplerMass=50;
+        s0.hasDecoupler=true;
+        s0.engines.push_back({"RD-180K", 200, 180000, 300, 1});
+        s0.tanks.push_back({"S1-Tank", 600, 9000});
+        falcon.addStage(s0);
+    }
+    {
+        // Stage 1 — Upper Stage + payload (TWR ~2.67, vacuum burn)
+        StageConfig s1; s1.name="UpperStage"; s1.strutMass=30; s1.hasDecoupler=false;
+        s1.engines.push_back({"RL10K", 100, 90000, 350, 1});
+        s1.tanks.push_back({"S2-Tank", 300, 2500});
+        s1.tanks.push_back({"Capsule", 500, 0});
+        falcon.addStage(s1);
+    }
+
+    // ── Ley de guiado para órbita ISS (400 km real = 40 km escala KSP) ───────
+    GuidanceLaw guidance;
+    guidance.hKick           = 200.0;    // m — inicio de pitch-over
+    guidance.hTurn           = 6000.0;   // m — prograde tracking comienza (pitch a 45°)
+    guidance.maxQLimit       = 35000.0;  // Pa — límite de presión dinámica
+    guidance.maxQThrottle    = 0.75;     // fracción de throttle en zona Max-Q
+    guidance.targetApoapsis  = 40000.0;  // m — apoapsis objetivo (400 km escala 0.1)
+
+    AscentIntegrator integrator(falcon, earth, &atm);
+    integrator.setThrottle(1.0);
+    integrator.setRecordInterval(40);
+    integrator.setGuidance(guidance);
+
+    std::cout << "  Simulando ascenso guiado (target apo = "
+              << guidance.targetApoapsis/1000.0 << " km)...\n";
+    AscentResult res = integrator.simulate(0.05, 900.0, 0.0);
+
+    // ── Resultados ────────────────────────────────────────────────────────────
+    const std::string SEP(60, '-');
+    std::cout << std::fixed << std::setprecision(1);
+    std::cout << "\n+" << std::string(60,'=') << "+\n";
+    std::cout << "|  RESULTADO DEL ASCENSO GUIADO                              |\n";
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Razon de parada   : " << std::left << std::setw(37) << res.exitReason << "|\n";
+    std::cout << "|  Insercion orbital : " << std::setw(37) << (res.orbitInserted ? "SI" : "NO") << "|\n";
+    std::cout << std::right;
+    std::cout << "|  Tiempo de corte   : " << std::setw(8) << res.cutoffTime     << " s                          |\n";
+    std::cout << "|  Alt. de corte     : " << std::setw(8) << res.cutoffAltitude/1000.0 << " km                         |\n";
+    std::cout << "|  Vel. de corte     : " << std::setw(8) << res.cutoffSpeed    << " m/s                       |\n";
+    std::cout << "|  Altitud maxima    : " << std::setw(8) << res.maxAltitude/1000.0 << " km                         |\n";
+    std::cout << "|  Velocidad maxima  : " << std::setw(8) << res.maxSpeed       << " m/s                       |\n";
+    std::cout << "|  Etapas separadas  : " << std::setw(8) << res.stagesUsed     << "                            |\n";
+    std::cout << "|  Llego al espacio  : " << std::setw(37) << (res.reachedSpace ? "SI" : "NO") << "|\n";
+
+    auto fmtKm = [](double m) -> std::string {
+        if (m > 1e15) return "escape traj.";
+        return std::to_string((int)(m/1000.0)) + " km";
+    };
+    std::cout << "|  Apoapsis          : " << std::left << std::setw(37) << fmtKm(res.apoapsis)  << "|\n";
+    std::cout << "|  Periapsis         : " << std::setw(37) << fmtKm(res.periapsis) << "|\n";
+    std::cout << std::right;
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Max-Q             : " << std::setw(8) << res.maxDynPressure/1000.0
+              << " kPa   t=" << std::setw(5) << res.maxDynPressureTime
+              << " s  alt=" << std::setw(5) << res.maxDynPressureAlt/1000.0 << " km      |\n";
+    std::cout << "+" << std::string(60,'=') << "+\n";
+
+    // Velocidad orbital circular a la apoapsis para referencia
+    double r_apo = earth.radius + res.apoapsis;
+    double v_circ_apo = std::sqrt(earth.mu / r_apo);
+    std::cout << "\n  Vel. circular en apoapsis (" << fmtKm(res.apoapsis) << "): "
+              << std::setprecision(1) << v_circ_apo << " m/s\n";
+    std::cout << "  (circularizacion en Phase 8E; delta-V necesario: ~"
+              << std::setprecision(0) << std::abs(res.cutoffSpeed - v_circ_apo) << " m/s)\n";
+
+    std::cout << "\n  Tiempos de separacion de etapa:\n";
+    for (int i = 0; i < (int)res.stagingTimes.size(); ++i)
+        std::cout << "    Etapa " << i << " (" << falcon.getStage(i).name << "): "
+                  << std::setprecision(1) << res.stagingTimes[i] << " s\n";
+
+    std::cout << "\n  Muestra de trayectoria (t, alt, vel, q, stage):\n";
+    std::cout << "  " << std::string(65, '-') << "\n";
+    int skip = std::max(1, (int)res.trajectory.size() / 12);
+    for (int i = 0; i < (int)res.trajectory.size(); i += skip) {
+        const auto& pt = res.trajectory[i];
+        std::cout << "  t=" << std::setw(6) << pt.time
+                  << " s  alt=" << std::setw(6) << pt.altitude/1000.0
+                  << " km  v=" << std::setw(6) << pt.speed
+                  << " m/s  q=" << std::setw(5) << pt.dynPressure/1000.0
+                  << " kPa  s=" << pt.stageIndex << "\n";
+    }
+
+    std::cout << "\n  ✓ Phase 8C complete — guiado de ascenso + insercion orbital operativos\n";
+}
+
+// ── (fim demo_phase8C) ────────────────────────────────────────────────────────
+
+/**
  * Phase 8A — Vehicle Modeling: multi-stage launch vehicle.
  *
  * Modela un cohete de 3 etapas al estilo Soyuz (escala KSP 0.1):
@@ -1077,7 +1199,9 @@ int main()
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
 ║  Orbital Mechanics · Parts · Propulsion · SoI · Aero · UI   ║
-║  Phase 8A: LaunchVehicle — Stage modeling, ΔV, TWR, CoM     ║
+║  Phase 8A: LaunchVehicle — Stage modeling, DV, TWR, CoM     ║
+║  Phase 8B: AscentIntegrator — RK4 launch, staging           ║
+║  Phase 8C: GuidanceLaw — Pitch program, Max-Q, orbit ins.   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -1096,19 +1220,21 @@ int main()
         example10_Visualization();
         demo_phase8A();
         demo_phase8B();
+        demo_phase8C();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                   EJEMPLOS COMPLETADOS                       ║
 ║                                                              ║
-║  Phase 1 — Mecánica orbital Kepleriana (6 elementos)         ║
-║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
+║  Phase 1 — Mecanica orbital Kepleriana (6 elementos)         ║
+║  Phase 2 — Jerarquia de partes, CoM dinamico, staging        ║
 ║  Phase 3 — Motor cohete, Tsiolkovsky, burn pro-grado         ║
-║  Phase 4 — Esferas de influencia, transición SoI             ║
-║  Phase 5 — Atmósfera ISA, arrastre D=½ρv²CdA, RK4           ║
-║  Phase 6 — Visualización ASCII: mapas orbitales, HUD         ║
-║  Phase 8A — LaunchVehicle: etapas, ΔV, TWR, CoM             ║
+║  Phase 4 — Esferas de influencia, transicion SoI             ║
+║  Phase 5 — Atmosfera ISA, arrastre D=1/2pv2CdA, RK4         ║
+║  Phase 6 — Visualizacion ASCII: mapas orbitales, HUD         ║
+║  Phase 8A — LaunchVehicle: etapas, DV, TWR, CoM             ║
 ║  Phase 8B — AscentIntegrator: RK4, staging, gravity turn    ║
+║  Phase 8C — GuidanceLaw: pitch program, Max-Q, insercion    ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";
