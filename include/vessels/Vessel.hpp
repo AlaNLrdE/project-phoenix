@@ -2,6 +2,7 @@
 
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
+#include <physics/AeroForces.hpp>
 #include <parts/Part.hpp>
 #include <parts/Engine.hpp>
 #include <math/Constants.hpp>
@@ -45,6 +46,11 @@ namespace Phoenix::Vessels
         // ── Phase 2: Jerarquía de partes ────────────────────────────────────
         /// Raíz del árbol de partes. nullptr = nave como punto de masa (Phase 1).
         std::shared_ptr<Part> rootPart;
+
+        // ── Phase 5: Aerodinámica ────────────────────────────────────────────
+        double crossSectionalArea; ///< m² — reference area for drag (default 10.0)
+        double dragCoefficient;    ///< Cd — dimensionless drag coefficient (default 0.5)
+        double noseRadius;         ///< m  — nose radius for Chapman heat flux (default 0.5)
 
         /**
          * Constructor.
@@ -230,6 +236,26 @@ namespace Phoenix::Vessels
          * @return ΔV real aplicado (m/s); 0 si no hay motores encendidos.
          */
         double executeBurn(double burnTime, dvec3 direction = dvec3(0.0));
+
+        // ── Phase 5: Aerodinámica y reentrada ───────────────────────────────
+
+        /**
+         * Simula una trayectoria de reentrada atmosférica usando integración
+         * numérica RK4. Toma posición y velocidad actuales de la órbita.
+         *
+         * La integración combina gravedad e inyectividad del arrastre aerodinámico
+         * hasta que la nave aterriza (altitud <= 0), se destruye por calor excesivo,
+         * o se agota el número máximo de pasos.
+         *
+         * @param atm       Modelo de atmósfera para el cuerpo de referencia
+         * @param dt        Paso de integración (s). Usar ≤ 0.1 s para precisión.
+         * @param maxSteps  Número máximo de pasos RK4
+         * @return          Trayectoria y resultado de la reentrada
+         */
+        Physics::AeroTrajectoryResult simulateReentry(
+            const Physics::Atmosphere &atm,
+            double dt = 0.05,
+            int maxSteps = 100000) const;
     };
 
 } // namespace Phoenix::Vessels

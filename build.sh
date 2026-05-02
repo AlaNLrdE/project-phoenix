@@ -60,7 +60,7 @@ case "$BUILD_TYPE" in
         mkdir -p "$BUILD_DIR"
         cd "$BUILD_DIR"
         cmake -DCMAKE_BUILD_TYPE=Debug ..
-        cmake --build . --parallel $(nproc)
+        cmake --build . --parallel $(sysctl -n hw.ncpu 2>/dev/null || nproc)
         print_success "Build complete: $BUILD_DIR/phoenix"
         ;;
     
@@ -69,7 +69,7 @@ case "$BUILD_TYPE" in
         mkdir -p "$BUILD_DIR"
         cd "$BUILD_DIR"
         cmake -DCMAKE_BUILD_TYPE=Release ..
-        cmake --build . --parallel $(nproc)
+        cmake --build . --parallel $(sysctl -n hw.ncpu 2>/dev/null || nproc)
         print_success "Build complete: $BUILD_DIR/phoenix"
         ;;
     
@@ -85,7 +85,7 @@ case "$BUILD_TYPE" in
         mkdir -p "$BUILD_DIR"
         cd "$BUILD_DIR"
         cmake -DCMAKE_BUILD_TYPE=Release ..
-        cmake --build . --parallel $(nproc)
+        cmake --build . --parallel $(sysctl -n hw.ncpu 2>/dev/null || nproc)
         print_success "Rebuild complete: $BUILD_DIR/phoenix"
         ;;
     

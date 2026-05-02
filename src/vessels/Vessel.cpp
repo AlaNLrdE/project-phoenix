@@ -18,7 +18,8 @@ namespace Phoenix::Vessels
         : name(name_), status("active"), dryMass(dryMass_), fuelMass(0.0),
           orbit(orbit_), currentTime(0.0),
           referenceBodyName(refBodyName), referenceBody(refBody),
-          rootPart(nullptr) {}
+          rootPart(nullptr),
+          crossSectionalArea(10.0), dragCoefficient(0.5), noseRadius(0.5) {}
 
     dvec3 Vessel::getPosition(double t) const
     {
@@ -456,6 +457,27 @@ namespace Phoenix::Vessels
         }
 
         return deltaVAccum;
+    }
+
+    // ── Phase 5: Aerodinámica ─────────────────────────────────────────────────
+
+    Physics::AeroTrajectoryResult Vessel::simulateReentry(
+        const Physics::Atmosphere &atm,
+        double dt,
+        int maxSteps) const
+    {
+        dvec3 r0 = getPosition(currentTime);
+        dvec3 v0 = getVelocity(currentTime);
+        double mass = getTotalMass();
+        double bRadius = referenceBody ? referenceBody->radius
+                                       : 6371000.0 * Constants::KSP_SCALE;
+        double bMu = referenceBody ? referenceBody->mu : Constants::MU_EARTH;
+
+        return Physics::AeroForces::simulate(
+            r0, v0, mass,
+            crossSectionalArea, dragCoefficient, noseRadius,
+            bRadius, bMu, atm,
+            dt, maxSteps);
     }
 
 } // namespace Phoenix::Vessels
