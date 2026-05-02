@@ -1,7 +1,7 @@
 project: Phoenix
 phase: 8
-date: "2026-05-01"
-status: ACTIVE (Phase 8C complete)
+date: "2026-05-02"
+status: ACTIVE (Phase 8D complete)
 language: C++20
 scale: KSP_0.1
 loc: 5800+
@@ -11,7 +11,7 @@ git:
   local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "e2bd705"
+  commit_hash: "4d80fb1"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
 
@@ -46,6 +46,9 @@ phases_complete:
   - phase: "8C"
     commit: "e2bd705"
     description: "GuidanceLaw — altitude-based pitch program (0→45° smoothstep), Max-Q throttle clamp, engine cutoff at target apoapsis (dual condition: apo>=target AND tanVel>=radVel)"
+  - phase: "8D"
+    commit: "4d80fb1"
+    description: "OrbitalManeuvers::circularize() — ΔV Hohmann en apoapsis, Orbit de inserción desde cutoffPosition/Velocity, órbita circular final; elipse+anillo cian en demo_launch, ΔV en HUD"
 
 files:
   include:
@@ -65,6 +68,7 @@ files:
     - launch/LaunchVehicle.hpp
     - launch/AscentIntegrator.hpp
     - launch/GuidanceLaw.hpp
+    - launch/OrbitalManeuvers.hpp
   src:
     - main.cpp
     - demo_3d.cpp          # Phase 7 — visor orbital 3D
@@ -82,6 +86,7 @@ files:
     - world/SphereOfInfluence.cpp
     - launch/LaunchVehicle.cpp
     - launch/AscentIntegrator.cpp
+    - launch/OrbitalManeuvers.cpp
   config:
     - CMakeLists.txt
     - build.sh
@@ -180,6 +185,19 @@ classes:
     members: [hKick, hTurn, maxQLimit, maxQThrottle, targetApoapsis]
     note: "hKick=200m pitch start, hTurn=6000m pitch 45° (prograde), maxQ clamp at 35kPa, targetApo=40km"
 
+  OrbitalManeuvers:
+    size_kb: 1.0
+    namespace: Phoenix::Launch
+    structs: [CircularizationResult]
+    methods:
+      - circularize    # ΔV Hohmann en apoapsis desde AscentResult → CircularizationResult
+    CircularizationResult_members:
+      - insertionOrbit   # Orbit — elipse de inserción (desde cutoffPosition/Velocity)
+      - circularOrbit    # Orbit — órbita circular post-burn (mismo plano, e=0, a=r_apo)
+      - deltaV           # m/s — ΔV prograde en apoapsis
+      - burnAltitude     # m — altitud del burn (= apoapsis de inserción)
+      - valid            # bool — false si ascent.orbitInserted==false
+
   Constants:
     size_kb: 1.5
     defines:
@@ -267,14 +285,33 @@ examples:
   ex_8b: "AscentIntegrator_Soyuz_RK4_trajectory"
 
 next_phase:
-  name: Phase8D_OrbitalManeuvers
-  estimated_loc: 300
-  description: "Orbital maneuvers — circularization burn at apoapsis (Hohmann), delta-V budget, porkchop"
+  name: Phase8E_ManeuverNode
+  estimated_loc: 350
+  description: "Maneuver nodes — generic impulsive burns (prograde/retrograde/normal), burn planning UI, porkchop plot"
   tasks:
-    - "8D-1: CircularizationBurn — compute delta-V at apoapsis to raise periapsis to circular"
-    - "8D-2: Integrate with AscentResult — hand off state vector to Orbit class after cutoff"
-    - "8D-3: Show circularized orbit in demo_launch.cpp (second ring after insertion)"
-    - "8D-4: Update console demo with circularization delta-V display"
+    - "8E-1: ManeuverNode struct — time, ΔV vector (prograde/normal/radial), target orbit"
+    - "8E-2: applyManeuver(Orbit, ManeuverNode) → Orbit — impulsive burn at a given true anomaly"
+    - "8E-3: Integrate with OrbitalManeuvers — chain circularization + plane change"
+    - "8E-4: demo_launch.cpp — visualize maneuver node (marker on orbit) and resulting orbit"
+    - "8E-5: Console demo with multi-burn mission (ascent + circularize + plane change)"
+
+checklist_phase8d:
+  OrbitalManeuvers_hpp: true
+  OrbitalManeuvers_cpp: true
+  CircularizationResult_struct: true
+  circularize_method: true
+  cutoffPosition_cutoffVelocity_AscentResult: true  # nuevos campos en AscentResult
+  insertion_orbit_from_state_vector: true           # Orbit(pos, vel, mu, epoch)
+  circular_orbit_same_plane: true                   # mismo i, Omega; e=0, a=r_apo
+  deltaV_vis_viva: true                             # v_circ - v_apo en apoapsis
+  demo_launch_insertion_ellipse: true               # segmentos naranjas sobre superficie
+  demo_launch_circular_ring: true                   # anillo cian post-circularización
+  demo_launch_hud_circ_dv: true                     # fila "Circ. DV" en panel órbita
+  demo_launch_insertion_flash_dv: true              # ΔV en flash ORBIT INSERTION
+  demo_phase8D_console: true                        # tablas inserción, maniobra, circular
+  cmake_updated: true
+  build_ok: true
+  commit: "4d80fb1"
 
 checklist_phase8c:
   GuidanceLaw_hpp: true
