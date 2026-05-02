@@ -205,6 +205,45 @@ namespace Phoenix::Vessels
         return newVessel;
     }
 
+    std::shared_ptr<Vessel> Vessel::launchStage()
+    {
+        if (!rootPart)
+            return nullptr;
+
+        // Buscar el ÚLTIMO Decoupler activo en DFS preorder
+        // (es el más profundo en el árbol → está en la etapa inferior)
+        Part *decouplerRaw = nullptr;
+        {
+            auto all = getAllParts();
+            for (auto *p : all) {
+                if (p->type == PartType::Decoupler && p->isActive)
+                    decouplerRaw = p;  // se actualiza en cada hallazgo → queda el último
+            }
+        }
+
+        if (!decouplerRaw)
+            return nullptr;
+
+        if (decouplerRaw->children.empty()) {
+            decouplerRaw->isActive = false;
+            return nullptr;
+        }
+
+        std::shared_ptr<Part> newRoot = decouplerRaw->children.front();
+        decouplerRaw->children.clear();
+        newRoot->parent = nullptr;
+
+        auto decouplerRef = decouplerRaw->detachFromParent();
+        (void)decouplerRef;
+
+        auto jettisoned = std::make_shared<Vessel>(
+            name + "_jettisoned",
+            0.0,
+            orbit, referenceBodyName, referenceBody);
+        jettisoned->setRootPart(std::move(newRoot));
+        return jettisoned;
+    }
+
     bool Vessel::dock(Vessel &other,
                       const std::string &ownPortName,
                       const std::string &otherPortName)

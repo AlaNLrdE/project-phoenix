@@ -155,12 +155,24 @@ namespace Phoenix::Vessels
         dvec3 getCenterOfMass() const;
 
         /**
-         * Dispara el primer Decoupler activo del árbol.
+         * Dispara el primer Decoupler activo del árbol (DFS preorder).
          * Separa el árbol en dos: la nave actual conserva la parte superior
          * y retorna una nueva Vessel con la etapa inferior.
          * @return Nueva Vessel separada; nullptr si no hay Decoupler.
          */
         std::shared_ptr<Vessel> stage();
+
+        /**
+         * Dispara el último Decoupler activo del árbol (separación bottom-up).
+         * Usa para la secuencia de lanzamiento real: booster se separa primero.
+         *
+         * El árbol construido por LaunchVehicle::assemble() tiene el booster
+         * como hoja más profunda con el decoupler más profundo → este método
+         * lo encuentra y separa correctamente la etapa inferior (booster primero).
+         *
+         * @return Vessel con la etapa separada; nullptr si no hay Decoupler.
+         */
+        std::shared_ptr<Vessel> launchStage();
 
         /**
          * Acopla otra nave: mueve su rootPart como hijo del puerto indicado.

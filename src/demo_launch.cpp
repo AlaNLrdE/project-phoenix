@@ -1,22 +1,28 @@
 /**
  * PROJECT PHOENIX — Demo Launch 3D (Phase 8)
  * ===========================================
- * Visualizador 3D del modelo de vehículo de lanzamiento (LaunchVehicle).
+ * Visualizador 3D del vehículo de lanzamiento y simulación de ascenso.
  *
- * Phase 8A — Vehicle stack viewer:
- *   - Cilindros coloreados por etapa (alturas y masas reales del modelo)
- *   - Marcador de CoM (esfera roja con línea de referencia)
- *   - HUD de rendimiento: ΔV, TWR, Isp, masa por etapa
- *   - Modo "exploded view" para inspeccionar etapas separadas
- *   - Starfield de fondo + suelo con grid
+ * Phase 8A — Vehicle stack viewer (tecla V):
+ *   - Cilindros coloreados por etapa, marcador de CoM, HUD de rendimiento
+ *   - Exploded view (E), selección de etapa (Tab/1-3)
+ *
+ * Phase 8B — Launch animation (tecla L):
+ *   - Ascenso simulado con AscentIntegrator (RK4 + gravity turn)
+ *   - Trail de trayectoria, separación de etapas, cámara de seguimiento
+ *   - HUD de telemetría en tiempo real (altitud, velocidad, etapa activa)
  *
  * Controles:
- *   Ratón botón izq. + arrastrar  — rotar cámara
- *   Scroll                         — zoom
- *   R                              — reset cámara
- *   E                              — toggle exploded view
- *   Tab / número 0-2               — seleccionar etapa (resaltar)
- *   ESC                            — salir
+ *   V                              — modo stack viewer (Phase 8A)
+ *   L                              — modo launch animation (Phase 8B)
+ *   Ratón botón izq. + arrastrar   — rotar cámara
+ *   Scroll                          — zoom
+ *   R                               — reset cámara
+ *   ESPACIO                         — pausar/reanudar (modo launch)
+ *   1/2/3/4                         — velocidad de simulación x1/x5/x20/x100
+ *   E                               — exploded view (modo stack)
+ *   Tab / 0-2                       — seleccionar etapa (modo stack)
+ *   ESC                             — salir
  */
 
 #include <raylib.h>
@@ -24,6 +30,9 @@
 #include <rlgl.h>
 
 #include <launch/LaunchVehicle.hpp>
+#include <launch/AscentIntegrator.hpp>
+#include <physics/CelestialBody.hpp>
+#include <physics/Atmosphere.hpp>
 #include <math/Constants.hpp>
 
 #include <cmath>
@@ -32,8 +41,10 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include <algorithm>
 
 using namespace Phoenix::Math;
+using namespace Phoenix::Physics;
 using namespace Phoenix::Launch;
 
 // ─── Helpers de formato ───────────────────────────────────────────────────────
@@ -133,76 +144,138 @@ static std::vector<StageVis> buildStack(const LaunchVehicle &lv, int selIdx) {
     return vis;
 }
 
+// ─── Escala física → render (usada en modo launch) ───────────────────────────
+
+static constexpr double PHYS_EARTH_R  = 6371000.0 * Constants::KSP_SCALE; // 637100 m
+static constexpr double RENDER_EARTH_R = 1.5;  // render units
+static constexpr double P2R = RENDER_EARTH_R / PHYS_EARTH_R;
+
+static Vector3 p2r(const dvec3 &v) {
+    return { (float)(v.x * P2R),
+             (float)(v.z * P2R),
+             (float)(v.y * P2R) };
+}
+
+// ─── Rocket 3D model (simple cylinder+cone en render space) ──────────────────
+
+static void drawRocketAt(Vector3 pos, Vector3 velDir, float scale, int activeStage,
+                          int totalStages)
+{
+    // Alinear el eje Y del cilindro con la dirección de vuelo
+    // Raylib DrawCylinder no soporta rotación arbitraria, usar DrawLine para simplificar
+    // El cohete se dibuja como una pequeña esfera+línea en modo launch
+    Color c = { 220, 220, 240, 255 };
+    DrawSphere(pos, scale * 0.3f, c);
+    // Llama al motor (punto brillante)
+    if (totalStages > 0 && activeStage < totalStages) {
+        Vector3 tailPos = {
+            pos.x - velDir.x * scale * 0.5f,
+            pos.y - velDir.y * scale * 0.5f,
+            pos.z - velDir.z * scale * 0.5f
+        };
+        DrawSphere(tailPos, scale * 0.2f, { 255, 160, 50, 230 });
+        // pluma del motor
+        for (int k = 0; k < 3; ++k) {
+            float t = (float)k / 3.0f;
+            Vector3 flame = {
+                tailPos.x - velDir.x * scale * (0.3f + t * 0.5f),
+                tailPos.y - velDir.y * scale * (0.3f + t * 0.5f),
+                tailPos.z - velDir.z * scale * (0.3f + t * 0.5f)
+            };
+            unsigned char alpha = (unsigned char)(200 * (1.0f - t));
+            DrawSphere(flame, scale * (0.15f - t * 0.1f), { 255, 100, 30, alpha });
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 //  MAIN
 // ──────────────────────────────────────────────────────────────────────────────
 
 int main()
 {
-    // ── Launch vehicle (mismo cohete que demo Phase 8A en main.cpp) ──────────
+    // ── Launch vehicle ────────────────────────────────────────────────────────
     LaunchVehicle soyuz("Soyuz-FG (KSP 0.1)");
     {
-        StageConfig booster;
-        booster.name          = "Boosters";
-        booster.strutMass     = 800.0;
-        booster.decouplerMass = 120.0;
-        booster.hasDecoupler  = true;
-        booster.engines.push_back({"RD-107A", 1100.0, 838800.0, 310.7, 4});
-        booster.tanks.push_back(  {"BoosterTank", 3200.0, 39600.0});
-        soyuz.addStage(booster);
+        StageConfig b; b.name="Boosters"; b.strutMass=800; b.decouplerMass=120;
+        b.hasDecoupler=true;
+        b.engines.push_back({"RD-107A",1100,838800,310.7,4});
+        b.tanks.push_back({"BoosterTank",3200,39600});
+        soyuz.addStage(b);
     }
     {
-        StageConfig core;
-        core.name          = "CoreStage";
-        core.strutMass     = 600.0;
-        core.decouplerMass = 80.0;
-        core.hasDecoupler  = true;
-        core.engines.push_back({"RD-108A", 1250.0, 792400.0, 314.2, 1});
-        core.tanks.push_back(  {"CoreTank", 6900.0, 91400.0});
-        soyuz.addStage(core);
+        StageConfig c; c.name="CoreStage"; c.strutMass=600; c.decouplerMass=80;
+        c.hasDecoupler=true;
+        c.engines.push_back({"RD-108A",1250,792400,314.2,1});
+        c.tanks.push_back({"CoreTank",6900,91400});
+        soyuz.addStage(c);
     }
     {
-        StageConfig upper;
-        upper.name          = "UpperStage";
-        upper.strutMass     = 200.0;
-        upper.hasDecoupler  = false;
-        upper.engines.push_back({"RD-0110",   410.0, 297900.0, 326.0, 1});
-        upper.tanks.push_back(  {"UpperTank",  2355.0, 22000.0});
-        upper.tanks.push_back(  {"SoyuzCapsule", 2800.0, 0.0});
-        soyuz.addStage(upper);
+        StageConfig u; u.name="UpperStage"; u.strutMass=200; u.hasDecoupler=false;
+        u.engines.push_back({"RD-0110",410,297900,326.0,1});
+        u.tanks.push_back({"UpperTank",2355,22000});
+        u.tanks.push_back({"SoyuzCapsule",2800,0});
+        soyuz.addStage(u);
     }
+
+    // ── Pre-computar trayectoria de ascenso (Phase 8B) ────────────────────────
+    CelestialBody earth("Earth", 5.972e24,
+        6371000.0 * Constants::KSP_SCALE, 86164.0,
+        Constants::MU_EARTH * Constants::KSP_SCALE * Constants::KSP_SCALE,
+        9.81, true, 70000.0 * Constants::KSP_SCALE);
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    AscentIntegrator integrator(soyuz, earth, &atm);
+    integrator.setThrottle(1.0);
+    integrator.setRecordInterval(10);
+    AscentResult ascent = integrator.simulate(0.05, 800.0, 0.0);
+
+    // Convertir trayectoria a render space
+    std::vector<Vector3> trailRender;
+    trailRender.reserve(ascent.trajectory.size());
+    for (const auto &pt : ascent.trajectory)
+        trailRender.push_back(p2r(pt.position));
 
     // ── Window ───────────────────────────────────────────────────────────────
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_MSAA_4X_HINT);
-    InitWindow(1280, 720, "Project Phoenix — Launch Vehicle Viewer (Phase 8A)");
+    InitWindow(1280, 720, "Project Phoenix — Launch Viewer (8A+8B)");
     SetTargetFPS(60);
 
     // ── Estado de UI ─────────────────────────────────────────────────────────
-    int  selStage   = -1;     // etapa seleccionada (-1 = ninguna)
-    bool exploded   = false;  // separar etapas visualmente
-    float explodGap = 2.0f;   // separación en modo exploded (m)
+    enum class Mode { Stack, Launch } mode = Mode::Stack;
+    int   selStage   = -1;
+    bool  exploded   = false;
+    float explodGap  = 2.0f;
+
+    // Launch animation state
+    double simTime    = 0.0;
+    double timeScale  = 1.0;
+    bool   paused     = false;
+    int    curPtIdx   = 0;   // índice en trajectory
+    float  stagingFlash = 0.0f;    // timer para flash STAGING
+    int    lastStagingIdx = 0;
 
     // ── Cámara ────────────────────────────────────────────────────────────────
-    // El cohete está centrado en X=0, Z=0, va de Y=0 hasta ~Y=30m.
-    // Cámara inicial: vista lateral a ~40m de distancia.
     Camera3D camera = {};
     camera.fovy       = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    float camYaw   =  30.0f;
-    float camPitch =  15.0f;
-    float camDist  =  40.0f;
-    float camTargetY = 15.0f;  // apunta al centro del cohete
+    float camYaw    =  30.0f;
+    float camPitch  =  20.0f;
+    float camDist   =  40.0f;
+    float camTgtX   =  0.0f;
+    float camTgtY   =  15.0f;
+    float camTgtZ   =  0.0f;
 
     auto updateCamera = [&]() {
         float yaw   = camYaw   * DEG2RAD;
         float pitch = camPitch * DEG2RAD;
         camera.position = {
-            camDist * std::cos(pitch) * std::sin(yaw),
-            camTargetY + camDist * std::sin(pitch),
-            camDist * std::cos(pitch) * std::cos(yaw)
+            camTgtX + camDist * std::cos(pitch) * std::sin(yaw),
+            camTgtY + camDist * std::sin(pitch),
+            camTgtZ + camDist * std::cos(pitch) * std::cos(yaw)
         };
-        camera.target = { 0.0f, camTargetY, 0.0f };
+        camera.target = { camTgtX, camTgtY, camTgtZ };
         camera.up     = { 0.0f, 1.0f, 0.0f };
     };
     updateCamera();
@@ -213,253 +286,287 @@ int main()
     // ── Starfield ─────────────────────────────────────────────────────────────
     auto stars = makeStars(1500, 300.0f);
 
+    float earthR = (float)(earth.radius * P2R);
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     while (!WindowShouldClose())
     {
-        // ── Input ────────────────────────────────────────────────────────────
-        float dt = GetFrameTime(); (void)dt;
+        float dt = GetFrameTime();
 
-        // Teclas de selección de etapa
-        if (IsKeyPressed(KEY_TAB)) {
-            selStage = (selStage + 2) % (soyuz.stageCount() + 1) - 1;
+        // ── Input global ──────────────────────────────────────────────────────
+        if (IsKeyPressed(KEY_V)) { mode = Mode::Stack; }
+        if (IsKeyPressed(KEY_L)) {
+            mode = Mode::Launch;
+            simTime = 0.0; curPtIdx = 0; paused = false;
+            stagingFlash = 0.0f; lastStagingIdx = 0;
+            // Ajustar cámara para vista orbital
+            camDist = 5.0f; camPitch = 10.0f; camYaw = 30.0f;
         }
-        if (IsKeyPressed(KEY_ZERO)) selStage = -1;
-        if (IsKeyPressed(KEY_ONE))  selStage = 0;
-        if (IsKeyPressed(KEY_TWO))  selStage = 1;
-        if (IsKeyPressed(KEY_THREE)) selStage = 2;
-
-        // Toggle exploded
-        if (IsKeyPressed(KEY_E)) exploded = !exploded;
-
-        // Reset cámara
         if (IsKeyPressed(KEY_R)) {
-            camYaw = 30.0f; camPitch = 15.0f; camDist = 40.0f;
+            camYaw = 30.0f; camPitch = 20.0f; camDist = 40.0f;
+            camTgtX = 0.0f; camTgtY = 15.0f; camTgtZ = 0.0f;
         }
-
-        // Zoom con scroll
         float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) {
-            camDist -= wheel * 2.0f;
-            camDist  = Clamp(camDist, 5.0f, 150.0f);
+            camDist -= wheel * (mode == Mode::Launch ? 0.3f : 2.0f);
+            camDist  = Clamp(camDist, 0.1f, 150.0f);
+        }
+        Vector2 mouse = GetMousePosition();
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))  { dragging = true;  lastMouse = mouse; }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) { dragging = false; }
+        if (dragging) {
+            Vector2 d = { mouse.x - lastMouse.x, mouse.y - lastMouse.y };
+            camYaw   -= d.x * 0.3f;
+            camPitch += d.y * 0.3f;
+            camPitch  = Clamp(camPitch, -85.0f, 85.0f);
+            lastMouse = mouse;
         }
 
-        // Rotar con botón izquierdo
-        Vector2 mouse = GetMousePosition();
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            dragging = true; lastMouse = mouse;
+        // ── Input modo Stack ──────────────────────────────────────────────────
+        if (mode == Mode::Stack) {
+            if (IsKeyPressed(KEY_TAB))   selStage = (selStage + 2) % (soyuz.stageCount()+1) - 1;
+            if (IsKeyPressed(KEY_ZERO))  selStage = -1;
+            if (IsKeyPressed(KEY_ONE))   selStage = 0;
+            if (IsKeyPressed(KEY_TWO))   selStage = 1;
+            if (IsKeyPressed(KEY_THREE)) selStage = 2;
+            if (IsKeyPressed(KEY_E))     exploded = !exploded;
         }
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) dragging = false;
-        if (dragging) {
-            Vector2 delta = { mouse.x - lastMouse.x, mouse.y - lastMouse.y };
-            camYaw   -= delta.x * 0.3f;
-            camPitch += delta.y * 0.3f;
-            camPitch  = Clamp(camPitch, -80.0f, 80.0f);
-            lastMouse = mouse;
+
+        // ── Input modo Launch ─────────────────────────────────────────────────
+        if (mode == Mode::Launch) {
+            if (IsKeyPressed(KEY_SPACE)) paused = !paused;
+            if (IsKeyPressed(KEY_ONE))   timeScale =   1.0;
+            if (IsKeyPressed(KEY_TWO))   timeScale =   5.0;
+            if (IsKeyPressed(KEY_THREE)) timeScale =  20.0;
+            if (IsKeyPressed(KEY_FOUR))  timeScale = 100.0;
+
+            if (!paused && !ascent.trajectory.empty()) {
+                simTime += (double)dt * timeScale;
+                // Avanzar índice de trayectoria
+                while (curPtIdx + 1 < (int)ascent.trajectory.size() &&
+                       ascent.trajectory[curPtIdx + 1].time <= simTime)
+                    curPtIdx++;
+                // Detectar staging
+                if (lastStagingIdx < (int)ascent.stagingTimes.size() &&
+                    simTime >= ascent.stagingTimes[lastStagingIdx]) {
+                    stagingFlash = 2.5f;
+                    lastStagingIdx++;
+                }
+                stagingFlash -= dt;
+            }
+
+            // Cámara sigue al cohete en modo launch
+            if (curPtIdx < (int)trailRender.size()) {
+                Vector3 rp = trailRender[curPtIdx];
+                float smooth = std::min(1.0f, dt * 3.0f);
+                camTgtX += (rp.x - camTgtX) * smooth;
+                camTgtY += (rp.y - camTgtY) * smooth;
+                camTgtZ += (rp.z - camTgtZ) * smooth;
+            }
         }
 
         updateCamera();
 
-        // ── Construir geometría del stack ────────────────────────────────────
-        auto stack = buildStack(soyuz, selStage);
-        const int N = (int)stack.size();
-
-        // CoM height
-        float comH = (float)soyuz.getCoMHeight();
-
-        // En modo exploded, desplazar cada etapa hacia arriba
-        if (exploded) {
-            for (int i = 1; i < N; ++i) {
-                for (int j = i; j < N; ++j)
-                    stack[j].base += explodGap;
-            }
-            // Recalcular CoM aproximado en exploded (sólo visual)
-            float totalM = 0.0f, num = 0.0f;
-            for (int j = 0; j < N; ++j) {
-                float m = (float)soyuz.getStage(j).getWetMass();
-                num    += m * (stack[j].base + stack[j].height / 2.0f);
-                totalM += m;
-            }
-            if (totalM > 0.0f) comH = num / totalM;
-        }
-
         // ── Render ───────────────────────────────────────────────────────────
         BeginDrawing();
-        ClearBackground({ 5, 5, 15, 255 });
-
+        ClearBackground({ 3, 3, 12, 255 });
         BeginMode3D(camera);
 
-            // Starfield
-            for (const auto &st : stars) {
-                unsigned char b = (unsigned char)(st.brightness * 200);
-                DrawPoint3D(st.pos, { b, b, b, b });
-            }
+        // Starfield (siempre)
+        for (const auto &st : stars) {
+            unsigned char b = (unsigned char)(st.brightness * 190);
+            DrawPoint3D(st.pos, { b, b, b, b });
+        }
 
-            // Suelo
+        if (mode == Mode::Stack) {
+            // ── MODO STACK VIEWER ─────────────────────────────────────────────
             DrawPlane({ 0, 0, 0 }, { 60, 60 }, { 30, 40, 30, 80 });
-            // Grid lines
             for (int g = -5; g <= 5; ++g) {
-                DrawLine3D({(float)g*5, 0.01f, -25}, {(float)g*5, 0.01f, 25},
-                           { 50, 70, 50, 120 });
-                DrawLine3D({-25, 0.01f, (float)g*5}, { 25, 0.01f, (float)g*5},
-                           { 50, 70, 50, 120 });
+                DrawLine3D({(float)g*5, 0.01f, -25}, {(float)g*5, 0.01f, 25}, { 50, 70, 50, 100 });
+                DrawLine3D({-25, 0.01f, (float)g*5}, { 25, 0.01f, (float)g*5}, { 50, 70, 50, 100 });
             }
-
-            // Launchpad (cilindro base)
             DrawCylinder({ 0, 0, 0 }, 2.5f, 2.5f, 1.0f, 12, { 60, 60, 60, 255 });
-            DrawCylinderWires({ 0, 0, 0 }, 2.5f, 2.5f, 1.0f, 12, { 80, 80, 80, 255 });
+            DrawCylinderWires({ 0, 0, 0 }, 2.5f, 2.5f, 1.0f, 12, { 80, 80, 80, 200 });
 
-            // Etapas del cohete
+            auto stack = buildStack(soyuz, selStage);
+            const int N = (int)stack.size();
+            float comH = (float)soyuz.getCoMHeight();
+            if (exploded) {
+                for (int i = 1; i < N; ++i)
+                    for (int j = i; j < N; ++j) stack[j].base += explodGap;
+                float tm = 0.0f, nm = 0.0f;
+                for (int j = 0; j < N; ++j) {
+                    float m = (float)soyuz.getStage(j).getWetMass();
+                    nm += m * (stack[j].base + stack[j].height/2.0f); tm += m;
+                }
+                if (tm > 0.0f) comH = nm/tm;
+            }
             for (int i = 0; i < N; ++i) {
                 const auto &sv = stack[i];
-                Vector3 center = { 0.0f, sv.base + sv.height / 2.0f, 0.0f };
-                Vector3 bpos   = { 0.0f, sv.base, 0.0f };
-
-                // Cuerpo principal
-                DrawCylinder(bpos, sv.radius * 0.95f, sv.radius * 0.95f,
-                             sv.height, 16, sv.col);
-                DrawCylinderWires(bpos, sv.radius * 0.95f, sv.radius * 0.95f,
-                                  sv.height, 16, { 30, 30, 30, 200 });
-
-                // Cono de nariz (solo etapa superior)
-                if (i == N - 1) {
-                    Vector3 top = { 0.0f, sv.base + sv.height, 0.0f };
-                    DrawCylinder(top, sv.radius * 0.95f, 0.0f, sv.radius * 1.2f,
-                                 12, { 220, 220, 240, 255 });
+                Vector3 bpos = { 0.0f, sv.base, 0.0f };
+                Vector3 cent = { 0.0f, sv.base + sv.height/2.0f, 0.0f };
+                DrawCylinder(bpos, sv.radius*.95f, sv.radius*.95f, sv.height, 16, sv.col);
+                DrawCylinderWires(bpos, sv.radius*.95f, sv.radius*.95f, sv.height, 16, {30,30,30,200});
+                if (i == N-1) {
+                    Vector3 top = { 0.0f, sv.base+sv.height, 0.0f };
+                    DrawCylinder(top, sv.radius*.95f, 0.0f, sv.radius*1.2f, 12, {220,220,240,255});
                 }
-
-                // Toberas de motor (esferas pequeñas en la base)
-                if (!soyuz.getStage(i).engines.empty()) {
-                    int eCount = 0;
-                    for (const auto &e : soyuz.getStage(i).engines)
-                        eCount += e.count;
-                    float nozzleR = sv.radius * 0.18f;
-                    float nozzleRing = sv.radius * 0.55f;
-                    int nDraw = std::min(eCount, 8);
-                    for (int k = 0; k < nDraw; ++k) {
-                        float ang = (float)k / nDraw * 6.2832f;
-                        Vector3 np = {
-                            nozzleRing * std::cos(ang),
-                            sv.base - nozzleR * 0.5f,
-                            nozzleRing * std::sin(ang)
-                        };
-                        DrawSphere(np, nozzleR, { 50, 50, 60, 255 });
-                    }
+                int eCount=0;
+                for (const auto &e : soyuz.getStage(i).engines) eCount += e.count;
+                float nr = sv.radius*.18f, ring = sv.radius*.55f;
+                for (int k = 0; k < std::min(eCount,8); ++k) {
+                    float ang = (float)k/std::min(eCount,8) * 6.2832f;
+                    DrawSphere({ring*std::cos(ang), sv.base-nr*.5f, ring*std::sin(ang)}, nr, {50,50,60,255});
                 }
+                if (i == selStage)
+                    DrawCylinderWires(bpos, sv.radius+.05f, sv.radius+.05f, sv.height+.05f, 16, {255,255,100,255});
+                DrawLine3D(cent, {cent.x+sv.radius+.5f, cent.y, cent.z}, {180,180,180,130});
+            }
+            // CoM
+            DrawSphere({0,comH,0}, .2f, {255,60,60,220});
+            DrawLine3D({-4,comH,0},{4,comH,0},{255,60,60,160});
+            DrawLine3D({0,comH,-4},{0,comH,4},{255,60,60,160});
 
-                // Resaltado si seleccionado: contorno más grueso
-                if (i == selStage) {
-                    DrawCylinderWires(bpos, sv.radius + 0.05f, sv.radius + 0.05f,
-                                      sv.height + 0.05f, 16, { 255, 255, 100, 255 });
-                }
+        } else {
+            // ── MODO LAUNCH ANIMATION ─────────────────────────────────────────
 
-                // Etiqueta 3D flotante a la derecha del cilindro
-                Vector3 labelPos = { center.x + sv.radius + 0.5f, center.y, center.z };
-                DrawLine3D(center, labelPos, { 180, 180, 180, 160 });
-                DrawSphere(labelPos, 0.06f, { 200, 200, 200, 200 });
+            // Tierra
+            DrawSphere({0,0,0}, earthR, {40, 80, 160, 255});
+            DrawSphereWires({0,0,0}, earthR, 12, 12, {60, 110, 200, 60});
+            // Atmósfera (anillo semitransparente)
+            float atmR = (float)((earth.radius + atm.atmosphereHeight) * P2R);
+            DrawSphereWires({0,0,0}, atmR, 8, 8, {80, 140, 220, 40});
+
+            // Trail de trayectoria (hasta el punto actual)
+            int drawTo = std::min(curPtIdx + 1, (int)trailRender.size());
+            for (int i = 1; i < drawTo; ++i) {
+                float t = (float)i / (float)trailRender.size();
+                unsigned char alpha = (unsigned char)(80 + 150 * t);
+                // Color por etapa
+                int stIdx = ascent.trajectory[i].stageIndex;
+                Color tc = stageColor(stIdx, soyuz.stageCount(), false);
+                tc.a = alpha;
+                DrawLine3D(trailRender[i-1], trailRender[i], tc);
             }
 
-            // Marcador de CoM (esfera roja + línea horizontal)
-            Vector3 comPos = { 0.0f, comH, 0.0f };
-            DrawSphere(comPos, 0.2f, { 255, 60, 60, 220 });
-            // línea horizontal indicadora
-            DrawLine3D({ -4.0f, comH, 0.0f }, { 4.0f, comH, 0.0f },
-                       { 255, 60, 60, 180 });
-            DrawLine3D({ 0.0f, comH, -4.0f }, { 0.0f, comH, 4.0f },
-                       { 255, 60, 60, 180 });
+            // Posición actual del cohete
+            if (curPtIdx < (int)trailRender.size()) {
+                Vector3 rpos = trailRender[curPtIdx];
+                // Dirección de vuelo (normalizada)
+                Vector3 velDir = {0,1,0};
+                if (curPtIdx > 0) {
+                    Vector3 dp = {
+                        rpos.x - trailRender[curPtIdx-1].x,
+                        rpos.y - trailRender[curPtIdx-1].y,
+                        rpos.z - trailRender[curPtIdx-1].z
+                    };
+                    float len = std::sqrt(dp.x*dp.x + dp.y*dp.y + dp.z*dp.z);
+                    if (len > 1e-6f) velDir = {dp.x/len, dp.y/len, dp.z/len};
+                }
+                float rocketScale = earthR * 0.04f;
+                int stIdx = ascent.trajectory[curPtIdx].stageIndex;
+                drawRocketAt(rpos, velDir, rocketScale, stIdx, soyuz.stageCount());
+            }
+        }
 
         EndMode3D();
 
-        // ── HUD — panel lateral derecho: rendimiento del vehículo ────────────
-        {
-            int px = 1280 - 280, py = 10, pw = 268, ph = 200;
-            hudBox(px, py, pw, ph);
-            DrawText("LAUNCH VEHICLE", px + 8, py + 6, 14, { 80, 200, 255, 255 });
-            DrawText(soyuz.getName().c_str(), px + 8, py + 22, 12, WHITE);
-            int ry = py + 44;
-            hudRow(px+8, ry, "Total mass",
-                   fmt(soyuz.getTotalMass()/1000.0, 1) + " t"); ry += 18;
-            hudRow(px+8, ry, "Total DV",
-                   fmt(soyuz.getTotalDeltaV(), 0) + " m/s",
-                   { 100, 255, 100, 255 }); ry += 18;
-            hudRow(px+8, ry, "Payload frac",
-                   fmt(soyuz.getPayloadFraction()*100.0, 1) + " %"); ry += 18;
-            hudRow(px+8, ry, "CoM height",
-                   fmt(soyuz.getCoMHeight(), 2) + " m"); ry += 18;
-            hudRow(px+8, ry, "Stages",
-                   std::to_string(soyuz.stageCount())); ry += 18;
-            hudRow(px+8, ry, "Payload mass",
-                   fmt(soyuz.getPayloadMass()/1000.0, 2) + " t");
-        }
+        // ── HUD 2D ────────────────────────────────────────────────────────────
 
-        // ── HUD — panel lateral derecho: etapa seleccionada ──────────────────
-        if (selStage >= 0 && selStage < soyuz.stageCount()) {
-            const auto &s = soyuz.getStage(selStage);
-            int px = 1280 - 280, py = 220, pw = 268, ph = 210;
-            hudBox(px, py, pw, ph);
-            std::string title = "STAGE " + std::to_string(selStage)
-                              + " — " + s.name;
-            DrawText(title.c_str(), px+8, py+6, 13, stageColor(selStage, soyuz.stageCount(), false));
-            int ry = py + 26;
-            hudRow(px+8, ry, "Wet mass",
-                   fmt(s.getWetMass()/1000.0,1) + " t"); ry += 18;
-            hudRow(px+8, ry, "Dry mass",
-                   fmt(s.getDryMass()/1000.0,1) + " t"); ry += 18;
-            hudRow(px+8, ry, "Propellant",
-                   fmt(s.getPropellantMass()/1000.0,1) + " t"); ry += 18;
-            hudRow(px+8, ry, "DV",
-                   fmt(soyuz.getStageDeltaV(selStage),0) + " m/s",
-                   { 100, 255, 100, 255 }); ry += 18;
-            hudRow(px+8, ry, "TWR",
-                   fmt(soyuz.getStageTWR(selStage),2)); ry += 18;
-            hudRow(px+8, ry, "Isp",
-                   fmt(s.getWeightedIsp(),1) + " s"); ry += 18;
-            hudRow(px+8, ry, "Thrust",
-                   fmt(s.getMaxThrust()/1000.0,1) + " kN"); ry += 18;
-            double shift = soyuz.getCoMShiftDuringBurn(selStage);
-            std::string shiftStr = (shift >= 0 ? "+" : "") + fmt(shift, 2) + " m";
-            hudRow(px+8, ry, "CoM shift",
-                   shiftStr, shift > 0 ? Color{255,180,60,255} : Color{100,200,255,255});
-        }
+        if (mode == Mode::Stack) {
+            // Panel de rendimiento
+            int px = 1280-280, py=10;
+            hudBox(px,py,268,200);
+            DrawText("LAUNCH VEHICLE", px+8, py+6, 14, {80,200,255,255});
+            DrawText(soyuz.getName().c_str(), px+8, py+22, 12, WHITE);
+            int ry=py+44;
+            hudRow(px+8,ry,"Total mass",    fmt(soyuz.getTotalMass()/1000.,1)+" t"); ry+=18;
+            hudRow(px+8,ry,"Total DV",      fmt(soyuz.getTotalDeltaV(),0)+" m/s",{100,255,100,255}); ry+=18;
+            hudRow(px+8,ry,"Payload frac",  fmt(soyuz.getPayloadFraction()*100.,1)+" %"); ry+=18;
+            hudRow(px+8,ry,"CoM height",    fmt(soyuz.getCoMHeight(),2)+" m"); ry+=18;
+            hudRow(px+8,ry,"Payload mass",  fmt(soyuz.getPayloadMass()/1000.,2)+" t");
 
-        // ── HUD — panel inferior: controles ──────────────────────────────────
-        {
-            int px = 10, py = 720 - 80, pw = 480, ph = 68;
-            hudBox(px, py, pw, ph);
-            DrawText("CONTROLES", px+8, py+6, 12, { 120, 200, 255, 200 });
-            DrawText("Arrastrar: rotar  |  Scroll: zoom  |  R: reset camara",
-                     px+8, py+22, 12, { 200, 200, 200, 220 });
-            DrawText("E: exploded view  |  Tab/1/2/3: selec. etapa  |  0: deselec.",
-                     px+8, py+38, 12, { 200, 200, 200, 220 });
-            DrawText("ESC: salir",
-                     px+8, py+54, 12, { 200, 200, 200, 200 });
-        }
+            // Etapa seleccionada
+            if (selStage >= 0 && selStage < soyuz.stageCount()) {
+                const auto &s = soyuz.getStage(selStage);
+                hudBox(px, 220, 268, 200);
+                DrawText(("STAGE "+std::to_string(selStage)+" "+s.name).c_str(),
+                         px+8,226,13, stageColor(selStage, soyuz.stageCount(), false));
+                ry=246;
+                hudRow(px+8,ry,"Wet mass",  fmt(s.getWetMass()/1000.,1)+" t"); ry+=18;
+                hudRow(px+8,ry,"Propellant",fmt(s.getPropellantMass()/1000.,1)+" t"); ry+=18;
+                hudRow(px+8,ry,"DV",        fmt(soyuz.getStageDeltaV(selStage),0)+" m/s",{100,255,100,255}); ry+=18;
+                hudRow(px+8,ry,"TWR",       fmt(soyuz.getStageTWR(selStage),2)); ry+=18;
+                hudRow(px+8,ry,"Isp",       fmt(s.getWeightedIsp(),1)+" s"); ry+=18;
+            }
 
-        // ── HUD — marcadores de CoM y leyenda ────────────────────────────────
-        {
-            DrawCircle(12, 12, 6, { 255, 60, 60, 220 });
-            DrawText("CoM", 22, 6, 13, { 255, 60, 60, 220 });
+            // Controles
+            hudBox(10, 720-80, 480, 68);
+            DrawText("CONTROLES", 18, 644, 12, {120,200,255,200});
+            DrawText("Arrastrar: rotar | Scroll: zoom | R: reset | E: exploded", 18, 660, 12, {200,200,200,200});
+            DrawText("Tab/1/2/3: etapa | 0: deselec | L: modo lanzamiento", 18, 676, 12, {200,200,200,200});
 
-            int lx = 10, ly = 10;
+            // Leyenda
             for (int i = soyuz.stageCount()-1; i >= 0; --i) {
                 Color c = stageColor(i, soyuz.stageCount(), i == selStage);
-                DrawRectangle(lx, ly + (soyuz.stageCount()-1-i)*22,
-                              16, 16, c);
-                std::string lbl = "S" + std::to_string(i) + " " +
-                                  soyuz.getStage(i).name.substr(0,10);
-                DrawText(lbl.c_str(),
-                         lx + 20, ly + (soyuz.stageCount()-1-i)*22 + 2,
-                         12, c);
+                DrawRectangle(10, 10+(soyuz.stageCount()-1-i)*22, 16, 16, c);
+                DrawText(("S"+std::to_string(i)+" "+soyuz.getStage(i).name.substr(0,10)).c_str(),
+                         30, 12+(soyuz.stageCount()-1-i)*22, 12, c);
             }
+            if (exploded)
+                DrawText("EXPLODED VIEW  [E]", 10, 720-100, 13, {255,220,60,220});
+
+        } else {
+            // ── HUD lanzamiento ───────────────────────────────────────────────
+            int px = 1280-260, py=10;
+            hudBox(px, py, 248, 220);
+            DrawText("ASCENT TELEMETRY", px+8, py+6, 14, {80,200,255,255});
+            int ry = py+26;
+            if (curPtIdx < (int)ascent.trajectory.size()) {
+                const auto &pt = ascent.trajectory[curPtIdx];
+                hudRow(px+8,ry,"Mission time", fmt(pt.time,1)+" s"); ry+=18;
+                hudRow(px+8,ry,"Altitude",     fmt(pt.altitude/1000.,2)+" km"); ry+=18;
+                hudRow(px+8,ry,"Speed",        fmt(pt.speed,1)+" m/s"); ry+=18;
+                hudRow(px+8,ry,"Mass",         fmt(pt.mass/1000.,1)+" t"); ry+=18;
+                hudRow(px+8,ry,"Thrust",       fmt(pt.thrust/1000.,1)+" kN"); ry+=18;
+                hudRow(px+8,ry,"Drag",         fmt(pt.drag/1000.,2)+" kN"); ry+=18;
+                std::string stName = pt.stageIndex < soyuz.stageCount()
+                    ? soyuz.getStage(pt.stageIndex).name : "Coast";
+                hudRow(px+8,ry,"Active stage", stName,
+                       stageColor(pt.stageIndex, soyuz.stageCount(), false)); ry+=18;
+                hudRow(px+8,ry,"Stages jett.", std::to_string(lastStagingIdx)); ry+=18;
+            }
+            hudRow(px+8,ry,"Time scale", "x"+fmt(timeScale,0));
+
+            // Resultado final si ya llegamos al fin
+            if (curPtIdx >= (int)ascent.trajectory.size()-1 && !ascent.trajectory.empty()) {
+                hudBox(px, py+230, 248, 80);
+                DrawText("FINAL ORBIT", px+8, py+236, 13, {100,255,100,255});
+                int ry2 = py+254;
+                hudRow(px+8,ry2,"Apoapsis",  fmt(ascent.apoapsis/1000.,1)+" km"); ry2+=18;
+                hudRow(px+8,ry2,"Periapsis", fmt(ascent.periapsis/1000.,1)+" km");
+            }
+
+            // Flash de separación de etapa
+            if (stagingFlash > 0.0f) {
+                unsigned char alpha = (unsigned char)(std::min(1.0f, stagingFlash) * 230);
+                int sIdx = lastStagingIdx - 1;
+                std::string msg = "  STAGING! " +
+                    (sIdx < soyuz.stageCount() ? soyuz.getStage(sIdx).name : "stage") +
+                    " jettisoned";
+                DrawRectangle(300, 320, 680, 40, {30,30,30,(unsigned char)(alpha*0.7f)});
+                DrawText(msg.c_str(), 320, 330, 22, {255, 200, 60, alpha});
+            }
+
+            // Controles launch
+            hudBox(10, 720-60, 540, 48);
+            DrawText("SPACE: pausa | 1/2/3/4: x1/x5/x20/x100 | R: reset camara | V: stack viewer",
+                     18, 720-52, 11, {200,200,200,200});
+            DrawText((paused ? "PAUSADO" : ("x"+fmt(timeScale,0)+" speed")).c_str(),
+                     18, 720-36, 13, paused ? Color{255,100,100,220} : Color{100,255,100,220});
         }
 
-        // ── Modo exploded indicator ───────────────────────────────────────────
-        if (exploded)
-            DrawText("EXPLODED VIEW [E para salir]", 10, 720 - 100, 13,
-                     { 255, 220, 60, 220 });
-
-        // ── FPS ──────────────────────────────────────────────────────────────
-        DrawFPS(1280 - 80, 720 - 20);
-
+        DrawFPS(1280-80, 720-20);
         EndDrawing();
     }
 

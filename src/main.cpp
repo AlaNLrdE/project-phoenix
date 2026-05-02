@@ -14,6 +14,7 @@
 #include <ui/MissionDisplay.hpp>
 #include <math/Constants.hpp>
 #include <launch/LaunchVehicle.hpp>
+#include <launch/AscentIntegrator.hpp>
 
 using namespace Phoenix::Math;
 using namespace Phoenix::Physics;
@@ -855,6 +856,120 @@ void example10_Visualization()
 }
 
 /**
+ * Phase 8B — Launch Sequence: ascenso RK4 con separación de etapas.
+ *
+ * Simula el lanzamiento completo del Soyuz-FG KSP-0.1 usando AscentIntegrator:
+ *   - Integración RK4 bajo empuje + gravedad + arrastre atmosférico
+ *   - Gravity turn simple (vertical → prograde entre t=5 y t=60 s)
+ *   - Separación automática de etapas al agotar propelante
+ *   - Métricas orbitales del estado final (apoapsis, periapsis)
+ */
+void demo_phase8B()
+{
+    std::cout << "\n╔══════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║   PHASE 8B — LAUNCH SEQUENCE (AscentIntegrator + staging)    ║\n";
+    std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
+
+    // ── Tierra y atmósfera (escala KSP 0.1) ──────────────────────────────────
+    CelestialBody earth(
+        "Earth", 5.972e24,
+        6371000.0 * Constants::KSP_SCALE, 86164.0,
+        Constants::MU_EARTH * Constants::KSP_SCALE * Constants::KSP_SCALE,
+        9.81, true, 70000.0 * Constants::KSP_SCALE);
+
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    // ── Soyuz-FG KSP 0.1 (misma config que Phase 8A) ────────────────────────
+    LaunchVehicle soyuz("Soyuz-FG");
+    {
+        StageConfig b; b.name="Boosters"; b.strutMass=800; b.decouplerMass=120;
+        b.hasDecoupler=true;
+        b.engines.push_back({"RD-107A",1100,838800,310.7,4});
+        b.tanks.push_back({"BoosterTank",3200,39600});
+        soyuz.addStage(b);
+    }
+    {
+        StageConfig c; c.name="CoreStage"; c.strutMass=600; c.decouplerMass=80;
+        c.hasDecoupler=true;
+        c.engines.push_back({"RD-108A",1250,792400,314.2,1});
+        c.tanks.push_back({"CoreTank",6900,91400});
+        soyuz.addStage(c);
+    }
+    {
+        StageConfig u; u.name="UpperStage"; u.strutMass=200; u.hasDecoupler=false;
+        u.engines.push_back({"RD-0110",410,297900,326.0,1});
+        u.tanks.push_back({"UpperTank",2355,22000});
+        u.tanks.push_back({"SoyuzCapsule",2800,0});
+        soyuz.addStage(u);
+    }
+
+    // ── Simular ascenso ──────────────────────────────────────────────────────
+    AscentIntegrator integrator(soyuz, earth, &atm);
+    integrator.setThrottle(1.0);
+    integrator.setRecordInterval(40);  // ~2s entre puntos
+
+    std::cout << "  Simulando ascenso (RK4 dt=0.05s)...\n";
+    AscentResult res = integrator.simulate(0.05, 800.0, 0.0);
+
+    // ── Imprimir resultados ──────────────────────────────────────────────────
+    const std::string SEP(60, '-');
+    std::cout << std::fixed << std::setprecision(1);
+    std::cout << "\n+" << std::string(60,'=') << "+\n";
+    std::cout << "|  RESULTADO DEL ASCENSO                                     |\n";
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Razon de parada  : " << std::left << std::setw(38) << res.exitReason << "|\n";
+    std::cout << "|  Tiempo total     : " << std::right << std::setw(8) << res.totalBurnTime << " s                          |\n";
+    std::cout << "|  Altitud maxima   : " << std::setw(8) << res.maxAltitude/1000.0 << " km                         |\n";
+    std::cout << "|  Velocidad maxima : " << std::setw(8) << res.maxSpeed << " m/s                       |\n";
+    std::cout << "|  Etapas separadas : " << std::setw(8) << res.stagesUsed << "                            |\n";
+    std::cout << "|  Llego al espacio : " << std::setw(38) << (res.reachedSpace ? "SI" : "NO") << "|\n";
+    bool hasOrbit = (res.apoapsis > 0.0 && res.periapsis != 0.0);
+    std::cout << "|  Apoapsis         : "
+              << (hasOrbit ? std::to_string((int)(res.apoapsis/1000.0))+" km" : "escape traj.")
+              << std::string(hasOrbit ? 25 : 20, ' ') << "|\n";
+    std::cout << "|  Periapsis        : "
+              << (hasOrbit ? std::to_string((int)(res.periapsis/1000.0))+" km" : "escape traj.")
+              << std::string(hasOrbit ? 25 : 20, ' ') << "|\n";
+    std::cout << "+" << std::string(60,'=') << "+\n";
+
+    std::cout << "\n  Tiempos de separacion de etapa:\n";
+    for (int i = 0; i < (int)res.stagingTimes.size(); ++i)
+        std::cout << "    Etapa " << i << " (" << soyuz.getStage(i).name << "): "
+                  << std::setprecision(1) << res.stagingTimes[i] << " s\n";
+
+    // ── Muestra de trayectoria (cada 10 puntos) ──────────────────────────────
+    std::cout << "\n  Muestra de trayectoria (t, alt, vel, stage):\n";
+    std::cout << "  " << std::string(50, '-') << "\n";
+    int skip = std::max(1, (int)res.trajectory.size() / 12);
+    for (int i = 0; i < (int)res.trajectory.size(); i += skip) {
+        const auto& pt = res.trajectory[i];
+        std::cout << "  t=" << std::setw(6) << pt.time
+                  << " s  alt=" << std::setw(7) << pt.altitude/1000.0
+                  << " km  v=" << std::setw(7) << pt.speed
+                  << " m/s  stage=" << pt.stageIndex << "\n";
+    }
+
+    // ── Prueba de Vessel::launchStage() ─────────────────────────────────────
+    std::cout << "\n  Test Vessel::launchStage() (separacion bottom-up):\n";
+    Orbit dummyOrbit(earth.radius + 1000.0, 0.0, 0.0, 0.0, 0.0, 0.0, earth.mu, 0.0);
+    auto vessel = soyuz.assemble(dummyOrbit, &earth);
+    std::cout << "    Masa inicial: " << vessel->getTotalMass()/1000.0 << " t ("
+              << vessel->getAllParts().size() << " partes)\n";
+
+    auto s1 = vessel->launchStage();  // separa booster
+    if (s1) std::cout << "    Etapa separada: " << s1->name
+                      << " (" << s1->getTotalMass()/1000.0 << " t)\n";
+    std::cout << "    Masa restante: " << vessel->getTotalMass()/1000.0 << " t\n";
+
+    auto s2 = vessel->launchStage();  // separa core
+    if (s2) std::cout << "    Etapa separada: " << s2->name
+                      << " (" << s2->getTotalMass()/1000.0 << " t)\n";
+    std::cout << "    Masa restante: " << vessel->getTotalMass()/1000.0 << " t (payload)\n";
+
+    std::cout << "\n  ✓ Phase 8B complete — AscentIntegrator + launchStage() operativos\n";
+}
+
+/**
  * Phase 8A — Vehicle Modeling: multi-stage launch vehicle.
  *
  * Modela un cohete de 3 etapas al estilo Soyuz (escala KSP 0.1):
@@ -980,6 +1095,7 @@ int main()
         example9_AtmosphericReentry();
         example10_Visualization();
         demo_phase8A();
+        demo_phase8B();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -992,6 +1108,7 @@ int main()
 ║  Phase 5 — Atmósfera ISA, arrastre D=½ρv²CdA, RK4           ║
 ║  Phase 6 — Visualización ASCII: mapas orbitales, HUD         ║
 ║  Phase 8A — LaunchVehicle: etapas, ΔV, TWR, CoM             ║
+║  Phase 8B — AscentIntegrator: RK4, staging, gravity turn    ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";
