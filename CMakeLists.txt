@@ -159,6 +159,65 @@ install(TARGETS phoenix RUNTIME DESTINATION bin)
 install(DIRECTORY include/ DESTINATION include/phoenix)
 
 # ============================================================================
+# Demo 3D — phoenix_3d  (requiere Raylib 5)
+# ============================================================================
+
+# Physics-only sources (no UI, no main)
+set(PHYSICS_SOURCES
+    ${SRC_DIR}/physics/Orbit.cpp
+    ${SRC_DIR}/physics/CelestialBody.cpp
+    ${SRC_DIR}/physics/Atmosphere.cpp
+    ${SRC_DIR}/physics/AeroForces.cpp
+    ${SRC_DIR}/parts/Part.cpp
+    ${SRC_DIR}/parts/Engine.cpp
+    ${SRC_DIR}/vessels/Vessel.cpp
+    ${SRC_DIR}/world/WorldManager.cpp
+    ${SRC_DIR}/world/SphereOfInfluence.cpp
+)
+
+find_package(raylib 5 QUIET)
+if(NOT raylib_FOUND)
+    find_library(RAYLIB_LIB raylib
+        PATHS /opt/homebrew/lib /usr/local/lib /usr/lib)
+    find_path(RAYLIB_INCLUDE raylib.h
+        PATHS /opt/homebrew/include /usr/local/include /usr/include)
+    if(RAYLIB_LIB AND RAYLIB_INCLUDE)
+        add_library(raylib SHARED IMPORTED)
+        set_target_properties(raylib PROPERTIES
+            IMPORTED_LOCATION "${RAYLIB_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${RAYLIB_INCLUDE}")
+        set(raylib_FOUND TRUE)
+    endif()
+endif()
+
+if(raylib_FOUND)
+    message(STATUS "✓ Raylib found — building phoenix_3d")
+    add_executable(phoenix_3d
+        ${SRC_DIR}/demo_3d.cpp
+        ${PHYSICS_SOURCES}
+    )
+    target_include_directories(phoenix_3d PRIVATE ${INCLUDE_DIR})
+    target_link_libraries(phoenix_3d PRIVATE glm::glm raylib)
+    if(APPLE)
+        target_link_libraries(phoenix_3d PRIVATE
+            "-framework OpenGL"
+            "-framework Cocoa"
+            "-framework IOKit"
+            "-framework CoreVideo"
+        )
+        target_compile_options(phoenix_3d PRIVATE -Wall -Wextra)
+    elseif(UNIX)
+        target_link_libraries(phoenix_3d PRIVATE GL m pthread dl rt X11)
+        target_compile_options(phoenix_3d PRIVATE -Wall -Wextra)
+    endif()
+    set_target_properties(phoenix_3d PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+else()
+    message(STATUS "⚠ Raylib not found — phoenix_3d skipped (brew install raylib)")
+endif()
+
+
+# ============================================================================
 # Información de compilación
 # ============================================================================
 
