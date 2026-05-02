@@ -27,10 +27,10 @@
  *
  * Controles:
  *   V                              — modo stack viewer (Phase 8A)
- *   L                              — modo launch animation (Phase 8B/8C)
+ *   L                              — modo launch animation (reinicia desde liftoff)
  *   Raton boton izq. + arrastrar   — rotar camara
- *   Scroll                         — zoom
- *   R                              — reset camara
+ *   Scroll                         — zoom (la camara se aleja sola al ganar altitud)
+ *   R                              — reset camara al sitio de lanzamiento
  *   ESPACIO                        — pausar/reanudar (modo launch)
  *   1/2/3/4                        — velocidad de simulacion x1/x5/x20/x100
  *   E                              — exploded view (modo stack)
@@ -371,12 +371,23 @@ int main()
             simTime = 0.0; curPtIdx = 0; paused = false;
             stagingFlash = 0.0f; lastStagingIdx = 0;
             insertionFlash = 0.0f; insertionShown = false;
-            // Ajustar cámara para vista orbital
-            camDist = 5.0f; camPitch = 10.0f; camYaw = 30.0f;
+            // Cámara apunta al sitio de lanzamiento (superficie en +X de ECI)
+            camTgtX = earthR;   // render X = ECI X = desde el centro hacia el ecuador
+            camTgtY = 0.0f;
+            camTgtZ = 0.0f;
+            camDist  = 0.5f;    // cerca del cohete para ver el ascenso
+            camPitch = 15.0f;
+            camYaw   = 45.0f;   // ángulo SW: vemos ganancia de altitud y movimiento prograde
         }
         if (IsKeyPressed(KEY_R)) {
-            camYaw = 30.0f; camPitch = 20.0f; camDist = 40.0f;
-            camTgtX = 0.0f; camTgtY = 15.0f; camTgtZ = 0.0f;
+            if (mode == Mode::Launch) {
+                // Reset al sitio de lanzamiento, no a la vista de Stack
+                camTgtX = earthR; camTgtY = 0.0f; camTgtZ = 0.0f;
+                camDist = 0.5f; camPitch = 15.0f; camYaw = 45.0f;
+            } else {
+                camYaw = 30.0f; camPitch = 20.0f; camDist = 40.0f;
+                camTgtX = 0.0f; camTgtY = 15.0f; camTgtZ = 0.0f;
+            }
         }
         float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) {
@@ -442,6 +453,13 @@ int main()
                 camTgtX += (rp.x - camTgtX) * smooth;
                 camTgtY += (rp.y - camTgtY) * smooth;
                 camTgtZ += (rp.z - camTgtZ) * smooth;
+
+                // Auto-zoom: aleja la cámara al ganar altitud para mantener el cohete
+                // y la Tierra visible al mismo tiempo.
+                double alt = ascent.trajectory[curPtIdx].altitude;
+                // 0 km → dist 0.5   |   40 km → dist ~2.5   (lineal con altitud en render)
+                float targetDist = 0.35f + (float)(alt * P2R) * 28.0f;
+                camDist += (targetDist - camDist) * std::min(1.0f, dt * 0.8f);
             }
         }
 
@@ -530,20 +548,21 @@ int main()
                 }
             }
 
-            // Phase 8D — elipse de inserción (naranja tenue, solo porción visible)
-            for (const auto &sg : insertionSegs)
-                DrawLine3D(sg.a, sg.b, { 220, 150, 40, 70 });
+            // Phase 8D — elipse de inserción y anillo circular: solo tras orbit insertion
+            if (insertionShown) {
+                for (const auto &sg : insertionSegs)
+                    DrawLine3D(sg.a, sg.b, { 220, 150, 40, 80 });
 
-            // Phase 8D — anillo de órbita circular post-circularización (cian)
-            if (circ.valid) {
-                const int  segs  = 64;
-                const float twoPi = 6.2832f;
-                for (int k = 0; k < segs; ++k) {
-                    float a0 = (float)k       / segs * twoPi;
-                    float a1 = (float)(k + 1) / segs * twoPi;
-                    Vector3 p0 = { circOrbitR * std::cos(a0), 0.0f, circOrbitR * std::sin(a0) };
-                    Vector3 p1 = { circOrbitR * std::cos(a1), 0.0f, circOrbitR * std::sin(a1) };
-                    DrawLine3D(p0, p1, { 60, 220, 240, 110 });
+                if (circ.valid) {
+                    const int   segs  = 64;
+                    const float twoPi = 6.2832f;
+                    for (int k = 0; k < segs; ++k) {
+                        float a0 = (float)k       / segs * twoPi;
+                        float a1 = (float)(k + 1) / segs * twoPi;
+                        Vector3 p0 = { circOrbitR * std::cos(a0), 0.0f, circOrbitR * std::sin(a0) };
+                        Vector3 p1 = { circOrbitR * std::cos(a1), 0.0f, circOrbitR * std::sin(a1) };
+                        DrawLine3D(p0, p1, { 60, 220, 240, 130 });
+                    }
                 }
             }
 
@@ -558,13 +577,13 @@ int main()
                 DrawLine3D(trailRender[i-1], trailRender[i], tc);
             }
 
-            // Marcador Max-Q (Phase 8C) — punto azul en el trail
-            if (maxQIdx > 0 && maxQIdx < (int)trailRender.size()) {
+            // Marcador Max-Q — solo visible cuando la animación ya pasó ese punto
+            if (maxQIdx > 0 && maxQIdx <= curPtIdx && maxQIdx < (int)trailRender.size()) {
                 DrawSphere(trailRender[maxQIdx], earthR * 0.025f, { 60, 140, 255, 220 });
             }
 
-            // Marcador engine cutoff / orbit insertion
-            if (cutoffIdx > 0 && cutoffIdx < (int)trailRender.size()) {
+            // Marcador engine cutoff — solo visible cuando la animación ya pasó ese punto
+            if (cutoffIdx > 0 && cutoffIdx <= curPtIdx && cutoffIdx < (int)trailRender.size()) {
                 DrawSphere(trailRender[cutoffIdx], earthR * 0.03f, { 80, 255, 120, 220 });
             }
 
