@@ -1,346 +1,80 @@
-╔═══════════════════════════════════════════════════════════════════════════╗
-║                                                                           ║
-║               ✅ PROJECT PHOENIX - PHASE 1 COMPLETE                        ║
-║                                                                           ║
-║              Orbital Mechanics Simulator | C++20 | GLM | 1:10 Scale      ║
-║                                                                           ║
-╚═══════════════════════════════════════════════════════════════════════════╝
+============================================================
+  PROJECT PHOENIX — STATUS
+============================================================
 
-SUMMARY OF DELIVERABLES
-═══════════════════════════════════════════════════════════════════════════════
+✅ PROJECT PHOENIX — PHASE 4 COMPLETE
+   Esferas de influencia (Patched-Conics)
 
-📦 SOURCE CODE (2,500+ líneas)
-├── include/
-│   ├── math/Constants.hpp              (1.5 KB) - Tipos, constantes GLM
-│   ├── physics/
-│   │   ├── Orbit.hpp                   (5.5 KB) - 6 elementos + propagación
-│   │   └── CelestialBody.hpp           (3.3 KB) - Cuerpos celestes
-│   ├── vessels/
-│   │   └── Vessel.hpp                  (3.3 KB) - Naves espaciales
-│   └── world/
-│       └── WorldManager.hpp            (4.1 KB) - Gestor central
-│
-├── src/
-│   ├── main.cpp                        (14 KB)  - 5 ejemplos completos
-│   ├── physics/
-│   │   ├── Orbit.cpp                   (9.2 KB) - Ecuación de Kepler
-│   │   └── CelestialBody.cpp           (1.9 KB)
-│   ├── vessels/
-│   │   └── Vessel.cpp                  (4.2 KB)
-│   └── world/
-│       └── WorldManager.cpp            (4.4 KB)
-│
-├── .vscode/
-│   ├── launch.json                     - Debugging
-│   ├── tasks.json                      - Build tasks
-│   └── settings.json                   - Editor settings
+------------------------------------------------------------
+COMPILACIÓN
+------------------------------------------------------------
+  Lenguaje:   C++20
+  Compilador: Clang (Apple) / GCC 10+
+  CMake:      3.20+
+  Librería:   GLM (header-only, Homebrew)
+  Platform:   macOS (Apple Silicon + Intel), Linux
 
-📚 DOCUMENTATION (6 documentos, 50+ KB)
-├── README.md                           - Referencia completa Phase 1
-├── QUICKSTART.md                       - Inicio rápido (5 min)
-├── INSTALL.md                          - Guía instalación por plataforma
-├── ARCHITECTURE.md                     - Diagramas y diseño técnico
-├── ROADMAP.md                          - Phase 2-6 + timeline
-└── SUMMARY.md                          - Este resumen ejecutivo
-
-🔧 BUILD SYSTEM & CONFIG
-├── CMakeLists.txt                      - Build system (C++20, GLM)
-├── build.sh                            - Script compilación
-├── setup_glm.sh                        - Helper para descargar GLM
-├── check_structure.py                  - Verificador estructura
-└── .gitignore                          - Git configuration
-
-═══════════════════════════════════════════════════════════════════════════════
-
-WHAT'S INCLUDED
-═══════════════════════════════════════════════════════════════════════════════
-
-✅ CORE PHYSICS
-   • 6 elementos orbitales clásicos (a, e, i, Ω, ω, ν)
-   • Ecuación de Kepler (Newton-Raphson)
-   • Propagación Kepleriana analítica
-   • Conversión bidireccional: elementos ↔ vectores estado
-   • Transformación orbital ↔ inercial 3D
-
-✅ ENTITY SYSTEM
-   • CelestialBody: planetas, lunas, estrellas
-   • Vessel: naves espaciales
-   • Orbit: elemento orbital individual
-   • WorldManager: gestor central de universo
-
-✅ SIMULATION FEATURES
-   • Time warp (1x, 10x, 100x, etc.)
-   • Desplazamiento flotante (preparado Phase 4)
-   • Sistema de registros (map/vector)
-   • Maniobras básicas (applyDeltaV)
-   • Consumo de combustible
-
-✅ EXAMPLES & TESTING
-   • 5 ejemplos de demostración en main.cpp
-   • Propagación de órbita circular
-   • Propagación de órbita elíptica
-   • Maniobra Hohmann básica
-   • Integración completa WorldManager
-
-✅ DEVELOPMENT ENVIRONMENT
-   • VS Code integration (.vscode/)
-   • CMake configuration (C++20)
-   • Build automation (build.sh)
-   • Structure verification (check_structure.py)
-
-═══════════════════════════════════════════════════════════════════════════════
-
-WHAT'S NOT INCLUDED (Future Phases)
-═══════════════════════════════════════════════════════════════════════════════
-
-❌ Phase 2: Part Hierarchy & CoM calculation
-❌ Phase 3: Propulsion & RK4 integration
-❌ Phase 4: Spheres of Influence
-❌ Phase 5: Aerodynamics & Reentry
-❌ Phase 6: Visualization & UI
-
-═══════════════════════════════════════════════════════════════════════════════
-
-TECHNICAL SPECIFICATIONS
-═══════════════════════════════════════════════════════════════════════════════
-
-Language:              C++20 (C++17 minimum)
-Math Library:          GLM (header-only)
-Build System:          CMake 3.20+
-Compiler Support:      GCC 10+, Clang 12+, MSVC 2019+
-Namespaces:            Phoenix::{Math, Physics, Vessels, World}
-Main Classes:          5 (Orbit, CelestialBody, Vessel, WorldManager, Enum)
-Public Methods:        ~45
-Source Lines of Code:  ~2,500
-Documentation Lines:   ~2,000
-Code Comments:         ~500 lines
-
-═══════════════════════════════════════════════════════════════════════════════
-
-QUICK START
-═══════════════════════════════════════════════════════════════════════════════
-
-1. Install Dependencies:
-   $ sudo apt-get install libglm-dev cmake g++   # Ubuntu/Debian
-   $ brew install glm cmake                       # macOS
-   See INSTALL.md for other platforms
-
-2. Build Project:
-   $ cd TTSP
-   $ ./build.sh release
-   
-3. Run Examples:
-   $ ./build/phoenix
-
-4. Read Documentation:
-   - Start with QUICKSTART.md (5 min)
-   - Then README.md (20 min)
-   - Reference: ARCHITECTURE.md
-
-═══════════════════════════════════════════════════════════════════════════════
-
-FILE STRUCTURE
-═══════════════════════════════════════════════════════════════════════════════
-
-TTSP/
-├── CMakeLists.txt                  (Main build config)
-├── build.sh                        (Quick build script)
-├── setup_glm.sh                    (GLM setup helper)
-├── check_structure.py              (Verification tool)
-│
-├── README.md                       ⭐ START HERE (30 min read)
-├── QUICKSTART.md                   ⭐ 5-minute intro
-├── INSTALL.md                      (Setup guide)
-├── ARCHITECTURE.md                 (Technical design)
-├── ROADMAP.md                      (Future phases)
-├── SUMMARY.md                      (Executive summary)
-│
-├── include/                        (Public headers)
-│   ├── math/Constants.hpp
-│   ├── physics/{Orbit, CelestialBody}.hpp
-│   ├── vessels/Vessel.hpp
-│   └── world/WorldManager.hpp
-│
-├── src/                            (Implementation)
-│   ├── main.cpp                    ⭐ EXAMPLES (read this 2nd)
-│   ├── physics/{Orbit, CelestialBody}.cpp
-│   ├── vessels/Vessel.cpp
-│   └── world/WorldManager.cpp
-│
-├── .vscode/                        (VS Code config)
-│   ├── launch.json
-│   ├── tasks.json
-│   └── settings.json
-│
-└── build/                          (Generated after ./build.sh)
-    └── phoenix                     (Executable)
-
-═══════════════════════════════════════════════════════════════════════════════
-
-EXAMPLE USAGE
-═══════════════════════════════════════════════════════════════════════════════
-
-Create a circular orbit and propagate:
-
-    #include <physics/Orbit.hpp>
-    
-    // Create circular LEO (0° eccentricity)
-    Phoenix::Physics::Orbit leo(
-        7000000.0,              // semi-major axis (m)
-        0.0,                    // eccentricity
-        0.0,                    // inclination
-        0.0, 0.0, 0.0,         // Ω, ω, ν
-        3.986e14,               // μ (gravitational parameter)
-        0.0                     // epoch
-    );
-    
-    // Get position at t = 1 hour
-    auto pos = leo.getPositionAtTime(3600.0);
-    auto period = leo.getPeriod();  // ~5400 seconds (~90 minutes)
-
-Manage simulation:
-
-    #include <world/WorldManager.hpp>
-    
-    Phoenix::World::WorldManager world;
-    
-    // Register celestial bodies and vessels
-    world.registerCelestialBody(earth);
-    world.registerVessel(satellite);
-    
-    // Run simulation
-    world.setTimeWarp(10);  // 10x speed
-    for (int i = 0; i < 1000; ++i) {
-        world.updateSimulation(1.0);  // +1 second
-    }
-
-═══════════════════════════════════════════════════════════════════════════════
-
-PERFORMANCE METRICS
-═══════════════════════════════════════════════════════════════════════════════
-
-Operation                      Complexity    Time (typical)
-─────────────────────────────────────────────────────────────
-Orbit construction (classical)     O(1)      < 1 μs
-Orbit construction (state vec)     O(1)      ~ 10 μs
-getPositionAtTime()                O(K)      ~ 50-100 μs
-WorldManager::updateSimulation()   O(n)      ~ 1 ms (100 vessels)
-
-Note: K = Kepler iterations (~3-5), n = number of vessels
-
-═══════════════════════════════════════════════════════════════════════════════
-
-KEY ALGORITHMS IMPLEMENTED
-═══════════════════════════════════════════════════════════════════════════════
-
-1. Kepler Equation Solver (Newton-Raphson)
-   M = E - e·sin(E)
-   Tolerance: 1e-10 rad, Max iterations: 100
-
-2. Anomaly Conversions
-   ν = 2·arctan(√((1+e)/(1-e)) · tan(E/2))
-
-3. Coordinate Transformations
-   r_inercial = R_z(Ω) · R_x(i) · R_z(ω) · r_orbital
-
-4. State Vector to Elements (Six-Vector conversion)
-   Energy, momentum, eccentricity vector, etc.
-
-═══════════════════════════════════════════════════════════════════════════════
-
-DOCUMENTATION ROADMAP
-═══════════════════════════════════════════════════════════════════════════════
-
-For Beginners:
-  1. QUICKSTART.md (5 min)
-  2. src/main.cpp (30 min, with examples)
-  3. README.md Basic Concepts section (10 min)
-
-For Developers:
-  1. ARCHITECTURE.md (15 min)
-  2. Code files (physics/Orbit.cpp, etc.) (1-2 hours)
-  3. ROADMAP.md for Phase 2 planning (10 min)
-
-For Maintenance:
-  1. CMakeLists.txt (build config)
-  2. INSTALL.md (setup issues)
-  3. check_structure.py (validation)
-
-═══════════════════════════════════════════════════════════════════════════════
-
-NEXT STEPS
-═══════════════════════════════════════════════════════════════════════════════
-
-Immediate (This session):
-  ✅ Download/clone this project
-  ✅ Install GLM (see INSTALL.md)
-  ✅ Run: ./build.sh release
-  ✅ Execute: ./build/phoenix
-  ✅ Read: QUICKSTART.md
-
-Short term (1-2 weeks):
-  □ Study: README.md + ARCHITECTURE.md
-  □ Modify: Examples in main.cpp
-  □ Experiment: Create custom orbits
-  □ Document: Your modifications
-
-Medium term (1 month):
-  □ Plan: Phase 2 implementation
-  □ Design: Part hierarchy system
-  □ Prepare: Center of Mass calculation
-
-═══════════════════════════════════════════════════════════════════════════════
-
-SUPPORT & RESOURCES
-═══════════════════════════════════════════════════════════════════════════════
-
-Documentation:
-  • README.md - Comprehensive guide
-  • QUICKSTART.md - Fast start
-  • ARCHITECTURE.md - Technical details
-  • ROADMAP.md - Future development
-
-External Resources:
-  • GLM: https://glm.g-truc.net/
-  • Orbital Mechanics: https://en.wikipedia.org/wiki/Orbital_element
-  • Kepler Equation: https://mathworld.wolfram.com/KeplersEquation.html
-  • KSP Physics: https://wiki.kerbalspaceprogram.com/
-
-═══════════════════════════════════════════════════════════════════════════════
-
-STATUS: ✅ PHASE 1 COMPLETE
-
-Version:        0.1.0
-Release Date:   May 1, 2026
-Lines of Code:  ~2,500
-Documentation:  ~2,000 lines + 50 KB
-Status:         Production Ready (Phase 1)
-
-Next Phase:     Phase 2 - Part Hierarchy (~3 weeks)
-Total Timeline: ~22 weeks to Phase 6
-
-═══════════════════════════════════════════════════════════════════════════════
-
-🚀 Ready to launch? Execute:
-
-    cd TTSP
-    ./build.sh release
+  Build Release:
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel $(sysctl -n hw.ncpu)
     ./build/phoenix
 
-📖 Ready to learn? Start with:
+------------------------------------------------------------
+FASES
+------------------------------------------------------------
+  ✅ Phase 1 — Mecánica orbital Kepleriana        [7c16032]
+     • Orbit (6 elementos + M0), CelestialBody
+     • Newton-Raphson para ecuación de Kepler
+     • Propagación getPositionAtTime / getVelocityAtTime
 
-    QUICKSTART.md (5 min)
-    src/main.cpp (30 min)
-    README.md (20 min)
+  ✅ Phase 2 — Jerarquía de partes               [ab82ad5]
+     • Part (árbol, CoM dinámico, staging)
+     • PartType enum, Vessel, docking
 
-🎯 Ready to contribute? See:
+  ✅ Phase 3 — Propulsión                        [724a9c3]
+     • Engine (Isp, throttle, Tsiolkovsky)
+     • Vessel::executeBurn, computeAvailableDeltaV
 
-    ROADMAP.md (for Phase 2)
-    ARCHITECTURE.md (for design)
+  ✅ Phase 4 — Esferas de influencia             [72110d4]
+     • SphereOfInfluence (computeRadius, checkTransition)
+     • WorldManager (buildBodyHierarchy, updateSoITransitions)
+     • CelestialBody::getWorldPosition/Velocity (recursivo)
+     • Orbit::M0 fix — propagación exacta en t=epoch
+     • 8 ejemplos en main.cpp
 
-═══════════════════════════════════════════════════════════════════════════════
+  🔄 Phase 5 — Aerodinámica y reentrada          [pendiente]
+  ⏳ Phase 6 — Visualización / UI                [futuro]
 
-                    ¡Proyecto Phoenix Phase 1 Completado!
-                   Listo para propagación orbital Kepleriana
+------------------------------------------------------------
+ESTRUCTURA DE ARCHIVOS
+------------------------------------------------------------
+  include/
+    math/Constants.hpp
+    physics/Orbit.hpp
+    physics/CelestialBody.hpp
+    parts/Part.hpp
+    parts/Engine.hpp
+    vessels/Vessel.hpp
+    world/WorldManager.hpp
+    world/SphereOfInfluence.hpp
+  src/
+    main.cpp
+    physics/Orbit.cpp
+    physics/CelestialBody.cpp
+    parts/Part.cpp
+    parts/Engine.cpp
+    vessels/Vessel.cpp
+    world/WorldManager.cpp
+    world/SphereOfInfluence.cpp
 
-═══════════════════════════════════════════════════════════════════════════════
+------------------------------------------------------------
+MÉTRICAS
+------------------------------------------------------------
+  Líneas de código:   ~3 294 (.cpp + .hpp)
+  Archivos fuente:    14 (7 .hpp + 7 .cpp)
+  Clases principales: 7
+  Namespaces:         5
+  Escala:             KSP 1:10 (distancias y radios x0.1)
+  Precisión:          double (IEEE 754, 64-bit)
+
+============================================================

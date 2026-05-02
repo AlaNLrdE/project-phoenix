@@ -66,7 +66,6 @@ namespace Phoenix::World
             dvec3 bodyWorldPos = body->getWorldPosition(t);
             dvec3 relPos = vesselWorldPos - bodyWorldPos;
 
-
             if (isInside(relPos, soiR))
             {
                 // Nave entró en la SoI de este hijo

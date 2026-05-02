@@ -1,19 +1,33 @@
 project: Phoenix
-phase: 3
+phase: 4
 date: "2026-05-01"
-status: IN_PROGRESS
+status: COMPLETE
 language: C++20
 scale: KSP_0.1
-loc: 2500+
+loc: 3300+
 docs_kb: 90
 
 git:
-  local_repo: "/var/home/alan/wk/TTSP"
+  local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "7c16032"
+  commit_hash: "72110d4"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
+
+phases_complete:
+  - phase: 1
+    commit: "7c16032"
+    description: "Keplerian orbital mechanics — 6 elements, Newton-Raphson, state vectors"
+  - phase: 2
+    commit: "ab82ad5"
+    description: "Part hierarchy, CoM, staging, docking"
+  - phase: 3
+    commit: "724a9c3"
+    description: "Engine class, Tsiolkovsky, executeBurn (Euler integration)"
+  - phase: 4
+    commit: "72110d4"
+    description: "SphereOfInfluence, patched-conics SoI model, Orbit M0 epoch fix"
 
 files:
   include:
@@ -24,6 +38,7 @@ files:
     - parts/Engine.hpp
     - vessels/Vessel.hpp
     - world/WorldManager.hpp
+    - world/SphereOfInfluence.hpp
   src:
     - main.cpp
     - physics/Orbit.cpp
@@ -32,6 +47,7 @@ files:
     - parts/Engine.cpp
     - vessels/Vessel.cpp
     - world/WorldManager.cpp
+    - world/SphereOfInfluence.cpp
   config:
     - CMakeLists.txt
     - build.sh

@@ -1,305 +1,202 @@
-# PROJECT PHOENIX - INSTALLATION GUIDE
+# PROJECT PHOENIX — GUÍA DE INSTALACIÓN
 
-## System Requirements
+## Plataformas soportadas
 
-- C++20 compliant compiler (GCC 10+, Clang 12+, MSVC 2019+)
-- CMake 3.20 or higher
-- GLM (header-only mathematics library)
-- Make or Ninja build system
+- **macOS** 12+ (Apple Silicon y Intel) — plataforma principal de desarrollo
+- **Linux** (Ubuntu 20.04+, Fedora 35+, Arch)
 
 ---
 
-## Platform-Specific Installation
+## Requisitos
 
-### Ubuntu / Debian
+| Dependencia | Versión mínima | Descripción                    |
+|-------------|----------------|--------------------------------|
+| C++ compiler | Clang 12+ / GCC 10+ | Soporte C++20 requerido   |
+| CMake       | 3.20+          | Build system                   |
+| GLM         | 0.9.9+         | Header-only, librería de matemáticas |
 
-```bash
-# Install compiler toolchain
-sudo apt-get update
-sudo apt-get install -y build-essential cmake
+---
 
-# Install GLM
-sudo apt-get install -y libglm-dev
+## macOS
 
-# Verify installation
-dpkg -l | grep glm
-```
-
-### Fedora / Red Hat
+### Con Homebrew (recomendado)
 
 ```bash
-sudo dnf install gcc-c++ cmake glm-devel
-```
+# Instalar Homebrew si no está disponible
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-### macOS (with Homebrew)
-
-```bash
+# Instalar dependencias
 brew install cmake glm
 
-# Verify
-brew list glm
+# Verificar
+cmake --version    # debe ser 3.20+
+ls /opt/homebrew/include/glm/glm.hpp   # Apple Silicon
+ls /usr/local/include/glm/glm.hpp       # Intel Mac
 ```
 
-### Windows (MSVC)
-
-1. **Install Visual Studio 2019 or later** with C++ development tools
-2. **Install CMake** from https://cmake.org/download/
-3. **Install GLM** from https://github.com/g-truc/glm/releases
-   - Extract to `C:\Program Files\glm\`
-   - Or set `GLM_INCLUDE_DIR` environment variable
-
----
-
-## Manual GLM Installation
-
-If your package manager doesn't have GLM, or for manual control:
-
-### Option 1: Clone from GitHub
+### Compilar y ejecutar
 
 ```bash
-cd /path/to/TTSP/extern
-git clone https://github.com/g-truc/glm.git
-cd ..
-```
+cd project-phoenix
 
-### Option 2: Download Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel $(sysctl -n hw.ncpu)
 
-```bash
-cd /path/to/TTSP/extern
-wget https://github.com/g-truc/glm/releases/download/0.9.9.8/glm-0.9.9.8.zip
-unzip glm-0.9.9.8.zip
-# Extract folder should be: extern/glm/glm/glm.hpp
-```
-
-### Option 3: Copy to System Path
-
-```bash
-# After downloading GLM
-sudo cp -r glm/glm /usr/include/
-
-# Verify
-ls /usr/include/glm/glm.hpp
-```
-
----
-
-## Build Configuration
-
-### Step 1: Verify GLM Location
-
-```bash
-# Check if GLM is in standard locations
-ls /usr/include/glm/glm.hpp              # Linux
-ls /usr/local/include/glm/glm.hpp        # macOS
-ls /opt/homebrew/include/glm/glm.hpp     # macOS (M1/M2)
-ls C:\Program\ Files\glm\glm\glm.hpp     # Windows
-```
-
-### Step 2: Configure CMake
-
-#### Automatic (Recommended)
-
-```bash
-cd /path/to/TTSP
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-```
-
-#### Manual (If automatic fails)
-
-```bash
-# Find GLM location
-find /usr -name glm.hpp 2>/dev/null
-
-# Use it in CMake
-cmake -DGLM_INCLUDE_DIR=/path/to/glm/include -DCMAKE_BUILD_TYPE=Release ..
-```
-
----
-
-## Build & Run
-
-### Using build.sh script (Linux/macOS)
-
-```bash
-cd /path/to/TTSP
-chmod +x build.sh
-
-# Release build (optimized)
-./build.sh release
-
-# Debug build (with symbols)
-./build.sh debug
-
-# Run directly
-./build.sh run
-
-# Clean
-./build.sh clean
-```
-
-### Manual CMake build
-
-```bash
-cd /path/to/TTSP
-mkdir -p build
-cd build
-
-# Configure
-cmake -DCMAKE_BUILD_TYPE=Release ..
-
-# Build
-cmake --build . --parallel $(nproc)
-# or: make -j$(nproc)
-
-# Run
-./phoenix
-```
-
-### Windows (MSVC)
-
-```bash
-cd C:\path\to\TTSP
-mkdir build
-cd build
-
-# Configure for MSVC
-cmake -G "Visual Studio 16 2019" -DCMAKE_BUILD_TYPE=Release ..
-
-# Build
-cmake --build . --config Release
-
-# Run
-Release\phoenix.exe
-```
-
----
-
-## Verify Installation
-
-### Check Compiler
-
-```bash
-g++ --version          # Linux/macOS
-clang++ --version      # Alternative
-cl.exe /?              # Windows MSVC
-```
-
-### Check CMake
-
-```bash
-cmake --version        # Should be 3.20+
-```
-
-### Check GLM Headers
-
-```bash
-find /usr -name "glm.hpp" -type f 2>/dev/null
-# or
-python3 -c "from pathlib import Path; import glob; print(glob.glob('/usr/**/glm/glm.hpp', recursive=True))"
-```
-
-### Test Compilation
-
-```bash
-cd /path/to/TTSP
-python3 check_structure.py
-./build.sh release
-
-# If successful, binary should be at:
 ./build/phoenix
 ```
 
 ---
 
-## Troubleshooting
-
-### "GLM headers not found"
-
-1. **Verify installation:**
-
-   ```bash
-   ls -la /usr/include/glm/glm.hpp
-   # or
-   ls -la /usr/local/include/glm/glm.hpp
-   ```
-
-2. **Set environment variable:**
-
-   ```bash
-   export GLM_INCLUDE_DIR=/path/to/glm/include
-   cd build && cmake -DGLM_INCLUDE_DIR=$GLM_INCLUDE_DIR ..
-   ```
-
-3. **Copy to standard location:**
-   ```bash
-   sudo cp -r /custom/path/glm /usr/include/
-   ```
-
-### CMake configuration fails
+## Linux — Ubuntu / Debian
 
 ```bash
-# Clear CMake cache and reconfigure
-rm -rf build/
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release \
-      -DGLM_INCLUDE_DIR=/explicit/path/to/glm \
-      ..
+sudo apt-get update
+sudo apt-get install -y build-essential cmake libglm-dev
+
+# Verificar
+gcc --version
+cmake --version
+dpkg -l libglm-dev
 ```
 
-### Compilation errors after installing GLM
+### Compilar y ejecutar
 
 ```bash
-# Clean build
-rm -rf build/
-./build.sh clean
+cd project-phoenix
 
-# Rebuild from scratch
-./build.sh rebuild
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel $(nproc)
+
+./build/phoenix
 ```
 
-### Permission denied on build.sh
+---
+
+## Linux — Fedora / Red Hat
+
+```bash
+sudo dnf install gcc-c++ cmake glm-devel
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel $(nproc)
+./build/phoenix
+```
+
+---
+
+## Linux — Arch
+
+```bash
+sudo pacman -S base-devel cmake glm
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel $(nproc)
+./build/phoenix
+```
+
+---
+
+## Instalación manual de GLM
+
+Si el gestor de paquetes no tiene GLM o la versión es muy antigua:
+
+```bash
+# Opción 1: Homebrew (macOS)
+brew install glm
+
+# Opción 2: clonar desde GitHub
+cd project-phoenix/extern
+git clone --depth=1 https://github.com/g-truc/glm.git
+
+# Opción 3: descargar release
+cd project-phoenix/extern
+curl -L https://github.com/g-truc/glm/releases/download/1.0.1/glm-1.0.1.zip -o glm.zip
+unzip glm.zip && rm glm.zip
+```
+
+Con GLM en `extern/glm`, CMake lo detectará automáticamente (ya configurado en `CMakeLists.txt`).
+
+---
+
+## Tipos de build
+
+```bash
+# Release: optimizado para producción (-O3)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel $(sysctl -n hw.ncpu 2>/dev/null || nproc)
+
+# Debug: con símbolos de depuración (-g -O0 -Wall -Wextra)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+
+# Limpiar artefactos
+rm -rf build
+```
+
+### Usando build.sh
 
 ```bash
 chmod +x build.sh
-./build.sh release
+
+./build.sh release   # build optimizado
+./build.sh debug     # build con símbolos
+./build.sh run       # build Release + ejecutar
+./build.sh clean     # eliminar directorio build/
 ```
 
 ---
 
-## Supported Compilers
+## Verificación
 
-| Compiler   | Version | Platform    | Status       |
-| ---------- | ------- | ----------- | ------------ |
-| GCC        | 10.0+   | Linux       | ✅ Tested    |
-| Clang      | 12.0+   | Linux/macOS | ✅ Tested    |
-| MSVC       | 2019+   | Windows     | ✅ Supported |
-| AppleClang | 13.0+   | macOS       | ✅ Supported |
+```bash
+# Compilador
+clang++ --version    # macOS (preferido)
+g++ --version        # Linux
 
----
+# CMake
+cmake --version      # debe ser >= 3.20
 
-## Next Steps
+# GLM (macOS Apple Silicon)
+ls /opt/homebrew/include/glm/glm.hpp
 
-1. **Verify build:** `./build/phoenix`
-2. **Read documentation:** See [README.md](README.md)
-3. **Explore examples:** See Phase 1 examples in `src/main.cpp`
-4. **Plan Phase 2:** See [ROADMAP.md](ROADMAP.md)
+# GLM (macOS Intel)
+ls /usr/local/include/glm/glm.hpp
 
----
+# GLM (Linux)
+dpkg -l libglm-dev 2>/dev/null || rpm -q glm-devel 2>/dev/null
 
-## Support
-
-If you encounter issues:
-
-1. Check this guide first
-2. Review CMake output carefully for specific errors
-3. Verify all dependencies are installed
-4. Check GitHub Issues: https://github.com/g-truc/glm/issues
-5. CMake documentation: https://cmake.org/cmake/help/
+# Binario compilado
+file build/phoenix                  # debe decir "Mach-O" (macOS) o "ELF" (Linux)
+./build/phoenix                     # ejecutar demo completa
+```
 
 ---
 
-**Last Updated:** Phase 1 Complete  
-**Maintainer:** Astrodynamics Engineering Team
+## GLM: rutas de búsqueda automática
+
+`CMakeLists.txt` busca GLM en el siguiente orden:
+
+1. Sistema (`find_package(glm)`)
+2. `/usr/include`
+3. `/usr/local/include`
+4. `/opt/local/include`
+5. `/opt/homebrew/include` (Apple Silicon)
+6. `extern/` dentro del proyecto
+
+Para especificar una ruta personalizada:
+
+```bash
+cmake -S . -B build -DGLM_INCLUDE_DIR=/ruta/a/glm/include
+```
+
+---
+
+## Resolución de problemas
+
+| Error | Causa probable | Solución |
+|-------|---------------|----------|
+| `GLM headers not found` | GLM no instalado | `brew install glm` o `sudo apt install libglm-dev` |
+| `C++20 not supported` | Compilador antiguo | Actualizar a Clang 12+ / GCC 10+ |
+| `cmake: command not found` | CMake no instalado | `brew install cmake` |
+| `No such file: build/phoenix` | Build no ejecutado | Ejecutar los pasos de compilación |
+| `Kepler solver: NaN` | Órbita degenerada | Verificar que `a > 0` y `0 ≤ e < 1` |
