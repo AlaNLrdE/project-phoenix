@@ -93,6 +93,7 @@ set(SOURCES
     ${SRC_DIR}/world/SphereOfInfluence.cpp
     ${SRC_DIR}/ui/AsciiRenderer.cpp
     ${SRC_DIR}/ui/MissionDisplay.cpp
+    ${SRC_DIR}/launch/LaunchVehicle.cpp
 )
 
 set(HEADERS
@@ -173,6 +174,7 @@ set(PHYSICS_SOURCES
     ${SRC_DIR}/vessels/Vessel.cpp
     ${SRC_DIR}/world/WorldManager.cpp
     ${SRC_DIR}/world/SphereOfInfluence.cpp
+    ${SRC_DIR}/launch/LaunchVehicle.cpp
 )
 
 find_package(raylib 5 QUIET)

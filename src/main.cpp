@@ -13,6 +13,7 @@
 #include <ui/AsciiRenderer.hpp>
 #include <ui/MissionDisplay.hpp>
 #include <math/Constants.hpp>
+#include <launch/LaunchVehicle.hpp>
 
 using namespace Phoenix::Math;
 using namespace Phoenix::Physics;
@@ -20,6 +21,7 @@ using namespace Phoenix::Vessels;
 using namespace Phoenix::World;
 using namespace Phoenix::Parts;
 using namespace Phoenix::UI;
+using namespace Phoenix::Launch;
 
 /**
  * Función auxiliar para imprimir vectores 3D.
@@ -852,15 +854,115 @@ void example10_Visualization()
                   << "  |  " << result.points.size() << " puntos\n";
 }
 
+/**
+ * Phase 8A — Vehicle Modeling: multi-stage launch vehicle.
+ *
+ * Modela un cohete de 3 etapas al estilo Soyuz (escala KSP 0.1):
+ *   Etapa 0 — Booster (4 cohetes laterales RD-107A)
+ *   Etapa 1 — Etapa central (RD-108A)
+ *   Etapa 2 — Tercera etapa (RD-0110) + cápsula Soyuz
+ *
+ * Demuestra: ΔV por etapa, TWR, fracción de payload, árbol de partes,
+ * masa total del Vessel ensamblado, y desplazamiento de CoM.
+ */
+void demo_phase8A()
+{
+    std::cout << "\n╔══════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║        PHASE 8A — VEHICLE MODELING (LaunchVehicle)           ║\n";
+    std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
+
+    // ── Tierra (escala KSP 0.1) ──────────────────────────────────────────────
+    CelestialBody earth(
+        "Earth",
+        5.972e24,
+        6371000.0 * Constants::KSP_SCALE,
+        86164.0,
+        Constants::MU_EARTH * Constants::KSP_SCALE * Constants::KSP_SCALE,
+        9.81,
+        true,
+        70000.0 * Constants::KSP_SCALE);
+
+    LaunchVehicle soyuz("Soyuz-FG (KSP 0.1)");
+
+    // ── Etapa 0: 4 boosters laterales (RD-107A × 4) ─────────────────────────
+    {
+        StageConfig booster;
+        booster.name         = "Boosters";
+        booster.strutMass    = 800.0;
+        booster.decouplerMass= 120.0;
+        booster.hasDecoupler = true;
+        booster.engines.push_back({"RD-107A", 1100.0, 838800.0, 310.7, 4});
+        booster.tanks.push_back(  {"BoosterTank", 3200.0, 39600.0});
+        soyuz.addStage(booster);
+    }
+
+    // ── Etapa 1: Etapa central (RD-108A × 1) ────────────────────────────────
+    {
+        StageConfig core;
+        core.name         = "CoreStage";
+        core.strutMass    = 600.0;
+        core.decouplerMass= 80.0;
+        core.hasDecoupler = true;
+        core.engines.push_back({"RD-108A", 1250.0, 792400.0, 314.2, 1});
+        core.tanks.push_back(  {"CoreTank", 6900.0, 91400.0});
+        soyuz.addStage(core);
+    }
+
+    // ── Etapa 2: Tercera etapa (RD-0110) + cápsula Soyuz ────────────────────
+    {
+        StageConfig upper;
+        upper.name         = "UpperStage";
+        upper.strutMass    = 200.0;
+        upper.hasDecoupler = false; // es la cima — no tiene decoupler propio
+        upper.engines.push_back({"RD-0110", 410.0, 297900.0, 326.0, 1});
+        upper.tanks.push_back(  {"UpperTank", 2355.0, 22000.0});
+        upper.tanks.push_back(  {"SoyuzCapsule", 2800.0, 0.0}); // carga útil (seca)
+        soyuz.addStage(upper);
+    }
+
+    // ── Análisis de rendimiento ──────────────────────────────────────────────
+    soyuz.printSummary();
+
+    // ── Verificación del Vessel ensamblado ───────────────────────────────────
+    std::cout << "  Ensamblando Vessel...\n";
+    Orbit launchOrbit(
+        (earth.radius + 200000.0 * Constants::KSP_SCALE) * 1.0, 0.0,
+        0.0, 0.0, 0.0, 0.0,
+        earth.mu, 0.0);
+
+    auto vessel = soyuz.assemble(launchOrbit, &earth);
+
+    std::cout << "  ✓ Vessel: " << vessel->name << "\n";
+    std::cout << "    Masa total (árbol de partes): "
+              << std::fixed << std::setprecision(1)
+              << vessel->getTotalMass() / 1000.0 << " t\n";
+    std::cout << "    CoM (modelo analítico): "
+              << soyuz.getCoMHeight() << " m sobre la base\n";
+    std::cout << "    Partes en el árbol: "
+              << vessel->getAllParts().size() << "\n";
+
+    // ── Desglose de CoM por burn ─────────────────────────────────────────────
+    std::cout << "\n  CoM shift por etapa:\n";
+    for (int i = 0; i < soyuz.stageCount(); ++i) {
+        double shift = soyuz.getCoMShiftDuringBurn(i);
+        std::cout << "    Etapa " << i << " (" << soyuz.getStage(i).name << "): "
+                  << std::showpos << std::setprecision(2) << shift << " m\n"
+                  << std::noshowpos;
+    }
+
+    std::cout << "\n  ✓ Phase 8A complete — LaunchVehicle operativo\n";
+}
+
 int main()
 {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║           PROJECT PHOENIX - PHASE 6 DEMONSTRATION            ║
+║           PROJECT PHOENIX - PHASE 8 DEMONSTRATION            ║
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
 ║  Orbital Mechanics · Parts · Propulsion · SoI · Aero · UI   ║
+║  Phase 8A: LaunchVehicle — Stage modeling, ΔV, TWR, CoM     ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -877,6 +979,7 @@ int main()
         example8_SphereOfInfluence();
         example9_AtmosphericReentry();
         example10_Visualization();
+        demo_phase8A();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -885,9 +988,10 @@ int main()
 ║  Phase 1 — Mecánica orbital Kepleriana (6 elementos)         ║
 ║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
 ║  Phase 3 — Motor cohete, Tsiolkovsky, burn pro-grado         ║
-║  Phase 4 — Esferas de influencia, transición SoI            ║
+║  Phase 4 — Esferas de influencia, transición SoI             ║
 ║  Phase 5 — Atmósfera ISA, arrastre D=½ρv²CdA, RK4           ║
 ║  Phase 6 — Visualización ASCII: mapas orbitales, HUD         ║
+║  Phase 8A — LaunchVehicle: etapas, ΔV, TWR, CoM             ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";
