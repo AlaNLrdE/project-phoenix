@@ -11,7 +11,7 @@ git:
   local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "a4a0d63"
+  commit_hash: "e2bd705"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
 
@@ -44,7 +44,7 @@ phases_complete:
     commit: "a4a0d63"
     description: "AscentIntegrator RK4 (thrust+gravity+drag), launchStage(), demo_launch animation mode"
   - phase: "8C"
-    commit: "TBD"
+    commit: "e2bd705"
     description: "GuidanceLaw — altitude-based pitch program (0→45° smoothstep), Max-Q throttle clamp, engine cutoff at target apoapsis (dual condition: apo>=target AND tanVel>=radVel)"
 
 files:
@@ -294,7 +294,7 @@ checklist_phase8c:
   demo_launch_orbit_panel: true      # apo/peri/Max-Q final orbit panel
   build_ok: true
   orbit_inserted: true               # orbitInserted=SI, apoapsis=40km, peri=-363km
-  commit: "TBD"
+  commit: "e2bd705"
 
 checklist_phase8b:
   AscentIntegrator_hpp: true
