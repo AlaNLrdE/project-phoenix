@@ -2,14 +2,16 @@
 
 ## Resumen de fases
 
-| Fase | Estado | Descripción                           |
-|------|--------|---------------------------------------|
-| 1    | ✅      | Mecánica orbital Kepleriana           |
-| 2    | ✅      | Jerarquía de partes                   |
-| 3    | ✅      | Propulsión (Engine, Tsiolkovsky)       |
-| 4    | ✅      | Esferas de influencia (SoI)           |
-| 5    | ✅      | Aerodinámica y reentrada              |
-| 6    | 🔄     | Visualización / UI                    |
+| Fase | Estado | Descripción                      |
+| ---- | ------ | -------------------------------- |
+| 1    | ✅     | Mecánica orbital Kepleriana      |
+| 2    | ✅     | Jerarquía de partes              |
+| 3    | ✅     | Propulsión (Engine, Tsiolkovsky) |
+| 4    | ✅     | Esferas de influencia (SoI)      |
+| 5    | ✅     | Aerodinámica y reentrada         |
+| 6    | ✅     | Visualización ASCII / HUD        |
+| 7    | ✅     | Visualización 3D (Raylib 5)      |
+| 8    | 🔄     | Launch to orbit (staged)         |
 
 ---
 
@@ -119,20 +121,88 @@
 
 ---
 
-## ⏳ Fase 6 — Visualización / UI (Futura)
+## ✅ Fase 7 — Visualización 3D (Raylib 5)
 
-- [ ] Renderer de órbitas (curvas de Keplero en 2D/3D)
-- [ ] Proyección de trayectorias futuras
-- [ ] Indicadores de ΔV, periapsis/apoapsis dinámico
-- [ ] Modo mapa (Map View estilo KSP)
-- [ ] Posible backend: Dear ImGui / SDL2 / OpenGL
+**Commit:** `78b6ab8`
+
+- ✅ Integración Raylib 5.5.0 con detección automática en CMake
+- ✅ Escena 3D orbital con Tierra KSP-scale y atmósfera con anillos de brillo
+- ✅ Starfield procedural: 2500 estrellas con brillo variable
+- ✅ 3 trayectorias simultáneas: LEO 200km, Hohmann, ISS-like 51.6°
+- ✅ Nave Phoenix-1 con marcador visual y flecha de velocidad
+- ✅ Trayectoria de reentrada pre-calculada (gradiente color naranja→rojo)
+- ✅ Cámara orbital interactiva: drag ratón, scroll zoom, reset (R)
+- ✅ Time warp: ×1, ×10, ×100, ×500 + pausa
+- ✅ Toggles de capas visuales (L/H/I/E/A/G)
+- ✅ HUD de telemetría en tiempo real (MET, altitud, velocidad, elementos)
+- ✅ Panel de controles en pantalla
+- ✅ Leyenda de órbitas
+- ✅ FPS monitor
+- ✅ Fix macOS ARM: removido FLAG_MSAA_4X_HINT (causaba crash GLFW)
+- ✅ Ejemplo 11 (demo_3d.cpp): visualizador completamente funcional
+
+---
+
+## 🔄 Fase 8 — Launch to Orbit (Staged Rockets)
+
+**Commit:** (en progreso)
+
+### 8A — Vehicle Modeling
+- [ ] `Stage` class: motor, tanque, estructura
+- [ ] `LaunchVehicle`: vector de stages, CoM/Isp agregados
+- [ ] Fuel distribution: transferencia entre tanques por gravedad
+- [ ] Thrust curve y empuje disponible por stage
+- [ ] Masa de estructura (dry mass) por stage
+- [ ] Tracking de centro de masa dinámico durante quemado
+
+### 8B — Launch Sequence
+- [ ] `LaunchController`: secuencia de ignición
+- [ ] Separation logic: detector de motor apagado, decoupler automático
+- [ ] Collision physics: separación segura entre stages (distancia mínima)
+- [ ] Launch clamps: restricción inicial de posición/velocidad
+- [ ] Countdown y hold-down firing
+
+### 8C — Ascent Guidance
+- [ ] Gravity turn profile: inicio de pitch at 50m/s, progresión temporal
+- [ ] Max-Q detection: búsqueda dinámica de punto de máxima presión dinámica
+- [ ] Throttle management: limitación por Max-Q
+- [ ] Target orbit specification: altitud, inclinación, argumento del nodo
+- [ ] Pitch program: cálculo de ángulo requerido vs. vuelo actual
+
+### 8D — Autopilot (Thrust Vector Control)
+- [ ] Gimbal control: vector thrust hacia proa deseada
+- [ ] PID controller: error de pitch/yaw/roll → gimbal angle
+- [ ] Fin control: aeroaletas para estabilidad (si aplica)
+- [ ] Throttle servo: rampa de empuje suave
+- [ ] g-limit: protección contra sobrecarga estructural
+
+### 8E — Orbital Insertion
+- [ ] Coast phase detection: apogeo → periapsis fijos
+- [ ] Circularization burn: cálculo ΔV, tiempo de ignición
+- [ ] Burn execution: timing, throttle profile
+- [ ] Achieve orbit: validación de elemento a circular
+
+### 8F — Launch Simulation UI
+- [ ] Real-time telemetry: altitud, velocidad, ángulo de vuelo, aceleración
+- [ ] Stage info: masa actual, empuje, ΔV disponible
+- [ ] Abort modes: emergency staging, chutes, reentrada
+- [ ] Flight director: guía visual de pitch/yaw/roll
+- [ ] Replay system: grabación y reproducción de vuelo
+
+---
+
+## ⏳ Fases futuras
+
+- Phase 9: Multi-vessel coordination (rendezvous, docking automático)
+- Phase 10: Mission planning (maneuver node calculator)
+- Phase 11: Multiplayer networking (shared orbits, physics sync)
 
 ---
 
 ## Línea de tiempo estimada
 
 ```
-Ph1 ──────── Ph2 ──────── Ph3 ──────── Ph4 ──────── Ph5 ──────── Ph6
-  ✅            ✅            ✅            ✅          🔄 (actual)    ⏳
-Orbital      Partes      Propulsión     SoI        Aerodinámica  Visualiz.
+Ph1 ──────── Ph2 ──────── Ph3 ──────── Ph4 ──────── Ph5 ──────── Ph6 ──── Ph7 ──────── Ph8
+  ✅            ✅            ✅            ✅          ✅          ✅        ✅        🔄
+Orbital      Partes      Propulsión     SoI      Aerodinámica  ASCII/HUD  3D/Raylib  Launch
 ```

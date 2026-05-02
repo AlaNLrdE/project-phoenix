@@ -1,17 +1,17 @@
 project: Phoenix
-phase: 4
+phase: 8
 date: "2026-05-01"
-status: COMPLETE
+status: ACTIVE (Phase 7 complete)
 language: C++20
 scale: KSP_0.1
-loc: 3300+
-docs_kb: 90
+loc: 5200+
+docs_kb: 120
 
 git:
   local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "72110d4"
+  commit_hash: "78b6ab8"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
 
@@ -28,24 +28,42 @@ phases_complete:
   - phase: 4
     commit: "72110d4"
     description: "SphereOfInfluence, patched-conics SoI model, Orbit M0 epoch fix"
+  - phase: 5
+    commit: "9f65503"
+    description: "Atmospheric drag, aerodynamic forces, reentry trajectory (RK4)"
+  - phase: 6
+    commit: "cf38f7f"
+    description: "ASCII renderer, mission display HUD, orbital visualization"
+  - phase: 7
+    commit: "78b6ab8"
+    description: "3D orbital viewer (Raylib 5), interactive telemetry, multi-orbit trails"
 
 files:
   include:
     - math/Constants.hpp
     - physics/Orbit.hpp
     - physics/CelestialBody.hpp
+    - physics/Atmosphere.hpp
+    - physics/AeroForces.hpp
     - parts/Part.hpp
     - parts/Engine.hpp
     - vessels/Vessel.hpp
+    - ui/AsciiRenderer.hpp
+    - ui/MissionDisplay.hpp
     - world/WorldManager.hpp
     - world/SphereOfInfluence.hpp
   src:
     - main.cpp
+    - demo_3d.cpp
     - physics/Orbit.cpp
     - physics/CelestialBody.cpp
+    - physics/Atmosphere.cpp
+    - physics/AeroForces.cpp
     - parts/Part.cpp
     - parts/Engine.cpp
     - vessels/Vessel.cpp
+    - ui/AsciiRenderer.cpp
+    - ui/MissionDisplay.cpp
     - world/WorldManager.cpp
     - world/SphereOfInfluence.cpp
   config:
@@ -160,15 +178,17 @@ examples:
   ex5: "Hohmann_transfer_deltaV"
 
 next_phase:
-  name: Phase3_Propulsion
-  estimated_time: "2 weeks"
-  estimated_loc: 1500
+  name: Phase8_LaunchToOrbit
+  estimated_time: "4 weeks"
+  estimated_loc: 2500
+  description: "Staged rocket launch system — ascent profile, staging automation, guidance"
   tasks:
-    - "Engine class (thrust, Isp, propellant consumption)"
-    - "Throttle control en Vessel"
-    - "Rocket equation (Tsiolkovsky)"
-    - "Burn time calculation"
-    - "Multi-engine configurations"
+    - "Phase 8A: Vehicle modeling (stages, fuel transfer, CoM tracking)"
+    - "Phase 8B: Launch sequence (ignition, staging logic, separation physics)"
+    - "Phase 8C: Ascent guidance (gravity turn profile, Max-Q, pitch program)"
+    - "Phase 8D: Autopilot (thrust vector control, gimbal, throttle management)"
+    - "Phase 8E: Orbital insertion (coast phase, circularization burn)"
+    - "Phase 8F: Launch simulation UI (real-time telemetry, abort modes, replay)"
 
 checklist_phase2:
   part_class: true

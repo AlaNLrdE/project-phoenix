@@ -2,8 +2,10 @@
   PROJECT PHOENIX — STATUS
 ============================================================
 
-✅ PROJECT PHOENIX — PHASE 4 COMPLETE
-   Esferas de influencia (Patched-Conics)
+✅ PROJECT PHOENIX — PHASE 7 COMPLETE
+   3D Orbital Viewer (Raylib 5.5.0)
+
+Next: Phase 8 — Launch to Orbit (Staged Rockets)
 
 ------------------------------------------------------------
 COMPILACIÓN
@@ -40,10 +42,31 @@ FASES
      • WorldManager (buildBodyHierarchy, updateSoITransitions)
      • CelestialBody::getWorldPosition/Velocity (recursivo)
      • Orbit::M0 fix — propagación exacta en t=epoch
-     • 8 ejemplos en main.cpp
 
-  🔄 Phase 5 — Aerodinámica y reentrada          [pendiente]
-  ⏳ Phase 6 — Visualización / UI                [futuro]
+  ✅ Phase 5 — Aerodinámica y reentrada          [9f65503]
+     • Atmosphere (5 capas ISA), AeroForces (RK4)
+     • Presión dinámica, flujo de calor Chapman
+     • Simulación completa de reentrada
+
+  ✅ Phase 6 — Visualización ASCII / HUD         [cf38f7f]
+     • AsciiRenderer (canvas 2D), MissionDisplay
+     • Dibujado de órbitas, perfiles de reentrada
+     • Telemetría y elementos keplerianos
+
+  ✅ Phase 7 — Visualización 3D (Raylib 5)       [78b6ab8]
+     • demo_3d.cpp: visualizador orbital interactivo
+     • Starfield 2500, 3 órbitas, trayectoria reentrada
+     • Cámara orbital, time warp, toggles visuales
+     • HUD de telemetría en tiempo real
+     • Fix macOS ARM GLFW (removido MSAA hint)
+
+  🔄 Phase 8 — Launch to Orbit (Staged)          [en progreso]
+     • Vehicle modeling (stages, fuel, CoM)
+     • Launch sequence (ignition, staging logic)
+     • Ascent guidance (gravity turn, Max-Q)
+     • Autopilot (thrust vector control, gimbal)
+     • Orbital insertion (circularization)
+     • Launch simulation UI
 
 ------------------------------------------------------------
 ESTRUCTURA DE ARCHIVOS
@@ -70,11 +93,13 @@ ESTRUCTURA DE ARCHIVOS
 ------------------------------------------------------------
 MÉTRICAS
 ------------------------------------------------------------
-  Líneas de código:   ~3 294 (.cpp + .hpp)
-  Archivos fuente:    14 (7 .hpp + 7 .cpp)
-  Clases principales: 7
+  Líneas de código:   ~5 200+ (.cpp + .hpp)
+  Archivos fuente:    21 (12 .hpp + 9 .cpp, incluye demo_3d)
+  Clases principales: 12
   Namespaces:         5
   Escala:             KSP 1:10 (distancias y radios x0.1)
   Precisión:          double (IEEE 754, 64-bit)
+  Compilador:         C++20 (GCC 10+, Clang 12+, MSVC 2019+)
+  Librerías externas: GLM (header-only), Raylib 5.5.0
 
 ============================================================
