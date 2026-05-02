@@ -1,4 +1,5 @@
 #include <world/WorldManager.hpp>
+#include <physics/Orbit.hpp>
 #include <iostream>
 #include <iomanip>
 
@@ -82,9 +83,6 @@ namespace Phoenix::World
         simulationTime += actualDelta;
 
         // En Phase 1, solo avanzamos el tiempo
-        // En Phase 3+, aquí irá la propagación con empuje
-        // En Phase 4+, aquí irá el desplazamiento flotante
-
         // Actualizar tiempo de todas las naves
         for (auto vessel : vessels)
         {
@@ -93,6 +91,12 @@ namespace Phoenix::World
                 vessel->currentTime = simulationTime;
             }
         }
+
+        // Phase 4: verificar transiciones de SoI
+        updateSoITransitions(simulationTime);
+
+        // Phase 4: mantener precisión numérica con floating origin
+        updateFloatingOrigin();
     }
 
     void WorldManager::printCelestialBodies() const
@@ -154,6 +158,89 @@ namespace Phoenix::World
         }
 
         std::cout << "===============================\n";
+    }
+
+    // ── Phase 4: SoI y origin floating ──────────────────────────────────────────
+
+    void WorldManager::buildBodyHierarchy()
+    {
+        for (auto &[name, body] : celestialBodies)
+        {
+            if (!body || body->parentBodyName.empty())
+                continue;
+            auto it = celestialBodies.find(body->parentBodyName);
+            if (it != celestialBodies.end() && it->second)
+            {
+                body->setParentBody(it->second);
+                it->second->addSatellite(body);
+            }
+        }
+    }
+
+    int WorldManager::updateSoITransitions(double t)
+    {
+        int transitions = 0;
+        for (auto vessel : vessels)
+        {
+            if (!vessel || !vessel->referenceBody)
+                continue;
+
+            auto result = SphereOfInfluence::checkTransition(*vessel, celestialBodies, t);
+            if (result.hasTransition)
+            {
+                applySoITransition(vessel, result.newBody,
+                                   result.newPosition, result.newVelocity, t);
+                ++transitions;
+            }
+        }
+        return transitions;
+    }
+
+    void WorldManager::applySoITransition(Vessel *vessel,
+                                          CelestialBody *newBody,
+                                          const dvec3 &newPos,
+                                          const dvec3 &newVel,
+                                          double t)
+    {
+        if (!vessel || !newBody)
+            return;
+
+        std::cout << "[SoI] " << vessel->name
+                  << ": " << vessel->referenceBodyName
+                  << " → " << newBody->name << "\n";
+
+        vessel->referenceBodyName = newBody->name;
+        vessel->referenceBody = newBody;
+        Orbit newOrbit(newPos, newVel, newBody->mu, t);
+        vessel->updateOrbit(newOrbit);
+    }
+
+    void WorldManager::updateFloatingOrigin(double threshold)
+    {
+        if (!activeVessel)
+            return;
+
+        dvec3 vesselPos = activeVessel->getPosition(simulationTime);
+        if (glm::length(vesselPos) < threshold)
+            return;
+
+        // Desplazar todos los cuerpos y naves
+        floatingOrigin += vesselPos;
+
+        for (auto &[name, body] : celestialBodies)
+        {
+            if (!body || !body->orbit)
+                continue;
+            // Los cuerpos se reposicionan mediante su órbita; no modificamos
+            // sus posiciones directamente. El floating origin se aplica al
+            // renderizador (fuera del alcance de este módulo de física).
+        }
+
+        // Para la nave activa, recentrar la órbita a posición relativa
+        // Nota: solo recentramos el estado interno si la nave usa coordenadas
+        // absolutas. En la arquitectura actual, la órbita ya es relativa al
+        // referenceBody, por lo que el FO es solo para el renderizador.
+        (void)threshold; // usado en la comprobación de longitud
     }
 
 } // namespace Phoenix::World

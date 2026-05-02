@@ -88,6 +88,7 @@ set(SOURCES
     ${SRC_DIR}/parts/Engine.cpp
     ${SRC_DIR}/vessels/Vessel.cpp
     ${SRC_DIR}/world/WorldManager.cpp
+    ${SRC_DIR}/world/SphereOfInfluence.cpp
 )
 
 set(HEADERS
@@ -98,6 +99,7 @@ set(HEADERS
     ${INCLUDE_DIR}/parts/Engine.hpp
     ${INCLUDE_DIR}/vessels/Vessel.hpp
     ${INCLUDE_DIR}/world/WorldManager.hpp
+    ${INCLUDE_DIR}/world/SphereOfInfluence.hpp
 )
 
 # ============================================================================

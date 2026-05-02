@@ -36,6 +36,7 @@ namespace Phoenix::Physics
         // Propiedades de órbita
         std::string parentBodyName; ///< Nombre del cuerpo padre (vacío si es el primario)
         Orbit *orbit;               ///< Órbita relativa al padre (nullptr si es primario)
+        CelestialBody *parentBody;  ///< Puntero directo al padre (Phase 4, nullptr si raíz)
 
         // Propiedades visuales/físicas adicionales
         dvec3 rotationAxis;       ///< Eje de rotación normalizado
@@ -72,7 +73,31 @@ namespace Phoenix::Physics
          * @param orbit_ Puntero a la órbita
          * @param parentName Nombre del cuerpo padre
          */
-        void setOrbit(Orbit *orbit_, const std::string &parentName);
+        void setOrbit(Orbit *orbit_, const std::string &parentName,
+                      CelestialBody *parentPtr = nullptr);
+
+        /**
+         * Asigna directamente el puntero al cuerpo padre.
+         */
+        void setParentBody(CelestialBody *parent) { parentBody = parent; }
+
+        /**
+         * Posición en el marco inercial del cuerpo raíz (recursiva).
+         * Igual a getPositionAtTime() para cuerpos de 1er nivel.
+         */
+        dvec3 getWorldPosition(double t) const;
+
+        /**
+         * Velocidad en el marco inercial del cuerpo raíz (recursiva).
+         */
+        dvec3 getWorldVelocity(double t) const;
+
+        /**
+         * Radio de la esfera de influencia (Phase 4).
+         * r_SoI = orbit.a * (mass / parentBody.mass)^(2/5)
+         * @return Radio en metros; -1 si no aplica (cuerpo raíz).
+         */
+        double getSoIRadius() const;
 
         /**
          * Obtiene la posición actual en el tiempo relativa al cuerpo padre.

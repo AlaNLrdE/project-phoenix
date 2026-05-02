@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <cmath>
 #include <world/WorldManager.hpp>
+#include <world/SphereOfInfluence.hpp>
 #include <physics/Orbit.hpp>
 #include <physics/CelestialBody.hpp>
 #include <vessels/Vessel.hpp>
@@ -488,15 +489,133 @@ void example7_Propulsion()
     std::cout << "  Empuje (post-shutdown): " << std::setprecision(0)
               << ship.getTotalThrust() << " N\n";
 }
+
+/**
+ * Ejemplo 8: Esferas de Influencia — sistema Tierra-Luna (Phase 4).
+ * Todos los objetos son stack-allocated para evitar problemas de ownership.
+ */
+void example8_SphereOfInfluence()
+{
+    std::cout << "\n╔════════════════════════════════════════╗\n";
+    std::cout << "║  EJEMPLO 8: Esferas de Influencia (Ph.4)║\n";
+    std::cout << "╚════════════════════════════════════════╝\n\n";
+
+    // ── Constantes ───────────────────────────────────────────────────────────
+    const double earthMu = Constants::MU_EARTH;
+    const double earthRadius = 6371000.0 * Constants::KSP_SCALE;
+    const double moonSMA = 384400000.0 * Constants::KSP_SCALE;
+    const double moonMu = 4.9048e12 * Constants::KSP_SCALE * Constants::KSP_SCALE;
+    const double moonRadius = 1737400.0 * Constants::KSP_SCALE;
+    const double moonMass = 7.342e22;
+    const double earthMass = 5.972e24;
+
+    // ── Radio de SoI ─────────────────────────────────────────────────────────
+    double moonSoI = SphereOfInfluence::computeRadius(moonSMA, moonMass, earthMass);
+
+    std::cout << "Sistema Tierra–Luna (escala KSP 1:10):\n";
+    std::cout << std::fixed << std::setprecision(0);
+    std::cout << "  Distancia Tierra–Luna: " << moonSMA / 1000.0 << " km\n";
+    std::cout << "  SoI de la Luna:        " << moonSoI / 1000.0 << " km\n\n";
+
+    // ── Nave en TLI ──────────────────────────────────────────────────────────
+    const double alt = 300000.0;
+    const double r = earthRadius + alt;
+    const double vLEO = std::sqrt(earthMu / r);
+    const double vTLI = std::sqrt(earthMu * (2.0 / r - 1.0 / ((r + moonSMA) / 2.0)));
+
+    Orbit tliOrbit(dvec3(r, 0.0, 0.0), dvec3(0.0, vTLI, 0.0), earthMu, 0.0);
+
+    std::cout << "Nave 'Apollo' en TLI:\n";
+    std::cout << std::setprecision(2);
+    std::cout << "  v_LEO:    " << vLEO << " m/s\n";
+    std::cout << "  v_TLI:    " << vTLI << " m/s  (ΔV = " << vTLI - vLEO << " m/s)\n";
+    std::cout << std::setprecision(0);
+    std::cout << "  Apoapsis: "
+              << (tliOrbit.getDistanceToApoapsis() - earthRadius) / 1000.0 << " km\n\n";
+
+    // ── Posición en apoapsis vs SoI lunar ────────────────────────────────────
+    const double tFly = tliOrbit.getPeriod() * 0.5;
+    const dvec3 shipAtApo = tliOrbit.getPositionAtTime(tFly);
+    const dvec3 moonAtT0(moonSMA, 0.0, 0.0);
+    const dvec3 relToMoon = shipAtApo - moonAtT0;
+    const double distToMoon = glm::length(relToMoon);
+
+    std::cout << "En t = " << std::setprecision(1) << tFly / 3600.0 << " h (apoapsis):\n";
+    std::cout << std::setprecision(0);
+    std::cout << "  Distancia a la Luna: " << distToMoon / 1000.0 << " km\n";
+    std::cout << "  SoI lunar:           " << moonSoI / 1000.0 << " km\n";
+    std::cout << "  Dentro SoI lunar:    "
+              << (SphereOfInfluence::isInside(relToMoon, moonSoI)
+                      ? "SÍ ✓"
+                      : "NO (necesita corrección de trayectoria)")
+              << "\n\n";
+
+    // ── Demo de transición: nave dentro de la SoI lunar ──────────────────────
+    // Objetos stack-allocated; CelestialBody no posee la Orbit (raw ptr no-owning).
+    CelestialBody earthBody("Earth", earthMass, earthRadius,
+                            86164.0, earthMu, 9.81, true,
+                            100000.0 * Constants::KSP_SCALE);
+
+    Orbit moonOrbit(dvec3(moonSMA, 0.0, 0.0),
+                    dvec3(0.0, std::sqrt(earthMu / moonSMA), 0.0),
+                    earthMu, 0.0);
+    CelestialBody moonBody("Moon", moonMass, moonRadius,
+                           2360448.0, moonMu, 1.62, false, 0.0);
+    moonBody.setOrbit(&moonOrbit, "Earth", &earthBody);
+
+    // Colocar nave a 0.5 * r_SoI del centro de la Luna
+    // Obtener posición real de la Luna según su órbita en t=0
+    dvec3 moonAt0 = moonBody.getWorldPosition(0.0);
+    const dvec3 nearMoonRelPos(moonSoI * 0.5, 0.0, 0.0);
+    const dvec3 nearMoonRelVel(0.0, -500.0, 0.0);
+    const dvec3 vesselPosEarth = moonAt0 + nearMoonRelPos;
+    const dvec3 vesselVelEarth = moonOrbit.getVelocityAtTime(0.0) + nearMoonRelVel;
+
+    Orbit vesselOrbit(vesselPosEarth, vesselVelEarth, earthMu, 0.0);
+    Vessel demoShip("DemoApollo", 50000.0, vesselOrbit, "Earth", &earthBody);
+
+    std::map<std::string, CelestialBody *> bodies{{"Earth", &earthBody}, {"Moon", &moonBody}};
+    auto transition = SphereOfInfluence::checkTransition(demoShip, bodies, 0.0);
+
+    std::cout << "Demo: nave colocada a 0.5 * r_SoI del centro lunar:\n";
+    if (transition.hasTransition)
+    {
+        std::cout << "  ✓ Transición detectada: Tierra → " << transition.newBody->name << "\n";
+        std::cout << "  Pos. en marco lunar:  ("
+                  << std::setprecision(0)
+                  << transition.newPosition.x / 1000.0 << ", "
+                  << transition.newPosition.y / 1000.0 << ", "
+                  << transition.newPosition.z / 1000.0 << ") km\n";
+        std::cout << std::setprecision(2);
+        std::cout << "  |v| relativa:         " << glm::length(transition.newVelocity) << " m/s\n";
+
+        Orbit lunarOrbit(transition.newPosition, transition.newVelocity, moonMu, 0.0);
+        std::cout << "  Excentricidad:        " << std::setprecision(4) << lunarOrbit.e << "\n";
+        if (lunarOrbit.e < 1.0)
+        {
+            std::cout << "  Periapsis lunar:      " << std::setprecision(0)
+                      << (lunarOrbit.getDistanceToPeriapsis() - moonRadius) / 1000.0 << " km\n";
+        }
+        else
+        {
+            std::cout << "  Trayectoria hiperbólica (flyby)\n";
+        }
+    }
+    else
+    {
+        std::cout << "  [Sin transición — revisar lógica de checkTransition]\n";
+    }
+}
+
 int main()
 {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║           PROJECT PHOENIX - PHASE 3 DEMONSTRATION            ║
+║           PROJECT PHOENIX - PHASE 4 DEMONSTRATION            ║
 ║          Kerbal Space Program Clone (1:10 Scale)             ║
 ║                                                              ║
-║     Orbital Mechanics · Part Hierarchy · Propulsion          ║
+║   Orbital Mechanics · Parts · Propulsion · Esferas de SoI   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -510,6 +629,7 @@ int main()
         example5_ManeuverBasic();
         example6_PartHierarchy();
         example7_Propulsion();
+        example8_SphereOfInfluence();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -518,8 +638,9 @@ int main()
 ║  Phase 1 — Mecánica orbital Kepleriana (6 elementos)         ║
 ║  Phase 2 — Jerarquía de partes, CoM dinámico, staging        ║
 ║  Phase 3 — Motor cohete, Tsiolkovsky, burn pro-grado         ║
+║  Phase 4 — Esferas de influencia, transición SoI            ║
 ║                                                              ║
-║  Próxima fase: Aerodinámica y atmósfera                      ║
+║  Próxima fase: Aerodinámica y re-entrada                     ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";

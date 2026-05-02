@@ -2,6 +2,7 @@
 
 #include <physics/CelestialBody.hpp>
 #include <vessels/Vessel.hpp>
+#include <world/SphereOfInfluence.hpp>
 #include <math/Constants.hpp>
 #include <string>
 #include <map>
@@ -121,6 +122,55 @@ namespace Phoenix::World
          * Listar todas las naves (debug).
          */
         void printVessels() const;
+
+        // ── Phase 4: SoI y origin floating ───────────────────────────────────────────
+
+        /**
+         * Construye el árbol de jerarquía entre cuerpos celestes.
+         * Debe llamarse después de registrar todos los cuerpos y asignar
+         * sus órbitas con setOrbit().
+         */
+        void buildBodyHierarchy();
+
+        /**
+         * Verifica transiciones de SoI para todas las naves activas y
+         * aplica los cambios de cuerpo de referencia cuando procede.
+         * Se llama automáticamente desde updateSimulation().
+         *
+         * @param t Tiempo de simulación actual (s).
+         * @return Número de transiciones aplicadas.
+         */
+        int updateSoITransitions(double t);
+
+        /**
+         * Aplica una transición de SoI a una nave concreta.
+         * Recalcula la órbita en el nuevo marco inercial.
+         *
+         * @param vessel  Nave a reasignar.
+         * @param newBody Nuevo cuerpo de referencia.
+         * @param newPos  Posición en el nuevo marco (metros).
+         * @param newVel  Velocidad en el nuevo marco (m/s).
+         * @param t       Tiempo actual (s).
+         */
+        void applySoITransition(Vessel *vessel,
+                                CelestialBody *newBody,
+                                const dvec3 &newPos,
+                                const dvec3 &newVel,
+                                double t);
+
+        /**
+         * Actualiza el floating origin para evitar pérdida de precisión.
+         * Recentra el sistema alrededor de la nave activa si esta supera
+         * el umbral configurado.
+         *
+         * @param threshold Distancia máxima al origen (metros). Default 1e8 m.
+         */
+        void updateFloatingOrigin(double threshold = 1e8);
+
+        /**
+         * Obtiene el desplazamiento actual del floating origin.
+         */
+        const dvec3 &getFloatingOrigin() const { return floatingOrigin; }
 
         /**
          * Obtiene todas las naves.
