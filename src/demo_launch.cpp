@@ -347,7 +347,20 @@ int main()
             camTgtZ + camDist * std::cos(pitch) * std::cos(yaw)
         };
         camera.target = { camTgtX, camTgtY, camTgtZ };
-        camera.up     = { 0.0f, 1.0f, 0.0f };
+
+        if (mode == Mode::Launch) {
+            // En modo Launch el "arriba" de cámara es la dirección radial-saliente
+            // (desde el centro de la Tierra hacia el objetivo de cámara).
+            // Esto hace que:
+            //   • la ganancia de altitud aparezca hacia ARRIBA en pantalla
+            //   • el movimiento prograde (este) aparezca hacia la DERECHA en pantalla
+            float len = std::sqrt(camTgtX*camTgtX + camTgtY*camTgtY + camTgtZ*camTgtZ);
+            camera.up = (len > 0.01f)
+                ? Vector3{ camTgtX/len, camTgtY/len, camTgtZ/len }
+                : Vector3{ 1.0f, 0.0f, 0.0f };
+        } else {
+            camera.up = { 0.0f, 1.0f, 0.0f };
+        }
     };
     updateCamera();
 
@@ -371,19 +384,20 @@ int main()
             simTime = 0.0; curPtIdx = 0; paused = false;
             stagingFlash = 0.0f; lastStagingIdx = 0;
             insertionFlash = 0.0f; insertionShown = false;
-            // Cámara apunta al sitio de lanzamiento (superficie en +X de ECI)
-            camTgtX = earthR;   // render X = ECI X = desde el centro hacia el ecuador
+            // Cámara apunta al sitio de lanzamiento (superficie en +X de ECI).
+            // Con camera.up = radial-out: pitch=45, yaw=0 es el ángulo donde
+            // altitud sube en pantalla y el prograde (este) va a la derecha.
+            camTgtX = earthR;
             camTgtY = 0.0f;
             camTgtZ = 0.0f;
-            camDist  = 0.5f;    // cerca del cohete para ver el ascenso
-            camPitch = 15.0f;
-            camYaw   = 45.0f;   // ángulo SW: vemos ganancia de altitud y movimiento prograde
+            camDist  = 0.5f;
+            camPitch = 45.0f;
+            camYaw   = 0.0f;
         }
         if (IsKeyPressed(KEY_R)) {
             if (mode == Mode::Launch) {
-                // Reset al sitio de lanzamiento, no a la vista de Stack
                 camTgtX = earthR; camTgtY = 0.0f; camTgtZ = 0.0f;
-                camDist = 0.5f; camPitch = 15.0f; camYaw = 45.0f;
+                camDist = 0.5f; camPitch = 45.0f; camYaw = 0.0f;
             } else {
                 camYaw = 30.0f; camPitch = 20.0f; camDist = 40.0f;
                 camTgtX = 0.0f; camTgtY = 15.0f; camTgtZ = 0.0f;
@@ -587,11 +601,17 @@ int main()
                 DrawSphere(trailRender[cutoffIdx], earthR * 0.03f, { 80, 255, 120, 220 });
             }
 
+            // Marcador de pad de lanzamiento (pequeño cuadrado en la superficie)
+            {
+                Vector3 pad = { earthR, 0.0f, 0.0f };
+                DrawSphere(pad, earthR * 0.015f, { 255, 255, 100, 180 });
+            }
+
             // Posición actual del cohete
             if (curPtIdx < (int)trailRender.size()) {
                 Vector3 rpos = trailRender[curPtIdx];
                 // Dirección de vuelo (normalizada)
-                Vector3 velDir = {0,1,0};
+                Vector3 velDir = { 1.0f, 0.0f, 0.0f };  // default: radial up
                 if (curPtIdx > 0) {
                     Vector3 dp = {
                         rpos.x - trailRender[curPtIdx-1].x,
@@ -601,7 +621,9 @@ int main()
                     float len = std::sqrt(dp.x*dp.x + dp.y*dp.y + dp.z*dp.z);
                     if (len > 1e-6f) velDir = {dp.x/len, dp.y/len, dp.z/len};
                 }
-                float rocketScale = earthR * 0.04f;
+                // Escala: más grande al inicio (altitud baja) para visibilidad,
+                // se encoge un poco en proporción al zoom de la cámara.
+                float rocketScale = earthR * 0.06f;
                 int stIdx = ascent.trajectory[curPtIdx].stageIndex;
                 drawRocketAt(rpos, velDir, rocketScale, stIdx, soyuz.stageCount());
             }
