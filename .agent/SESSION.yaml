@@ -11,7 +11,7 @@ git:
   local_repo: "/Users/alan/wk/project-phoenix"
   remote_url: "https://github.com/AlaNLrdE/project-phoenix.git"
   branch: master
-  commit_hash: "4d80fb1"
+  commit_hash: "7d886f6"
   first_commit_message: "feat: Phase 1 complete - Keplerian orbital mechanics simulator at 1:10 KSP scale"
   credentials_configured: true
 
@@ -47,8 +47,8 @@ phases_complete:
     commit: "e2bd705"
     description: "GuidanceLaw — altitude-based pitch program (0→45° smoothstep), Max-Q throttle clamp, engine cutoff at target apoapsis (dual condition: apo>=target AND tanVel>=radVel)"
   - phase: "8D"
-    commit: "4d80fb1"
-    description: "OrbitalManeuvers::circularize() — ΔV Hohmann en apoapsis, Orbit de inserción desde cutoffPosition/Velocity, órbita circular final; elipse+anillo cian en demo_launch, ΔV en HUD"
+    commit: "7d886f6"
+    description: "OrbitalManeuvers::circularize() — ΔV Hohmann en apoapsis, Orbit de inserción desde cutoffPosition/Velocity, órbita circular final; elipse+anillo cian en demo_launch, ΔV en HUD; camera radial-up fix, gravity turn east (90°), rocket scale +50%"
 
 files:
   include:
@@ -311,7 +311,11 @@ checklist_phase8d:
   demo_phase8D_console: true                        # tablas inserción, maniobra, circular
   cmake_updated: true
   build_ok: true
-  commit: "4d80fb1"
+  commit: "7d886f6"
+  camera_radial_up_fix: true       # camera.up = radial-out in Launch mode
+  gravity_turn_east_fix: true      # pitch=45 yaw=0 → prograde goes right
+  rocket_scale_fix: true           # earthR*0.06 + velDir default radial-up
+  launch_pad_marker: true          # yellow sphere at (earthR,0,0)
 
 checklist_phase8c:
   GuidanceLaw_hpp: true
