@@ -19,6 +19,12 @@
  *   - Marcador Max-Q en el trail (punto azul brillante)
  *   - Flash de "ORBIT INSERTION" al alcanzar la apoapsis objetivo
  *
+ * Phase 8D — Orbital maneuvers (mismo modo L):
+ *   - OrbitalManeuvers::circularize(): ΔV de circularización en apoapsis
+ *   - Elipse de inserción visible en 3D (segmentos sobre la superficie)
+ *   - Anillo de órbita circular (cian) sobre el anillo objetivo (verde)
+ *   - ΔV de circularización en el panel de órbita del HUD
+ *
  * Controles:
  *   V                              — modo stack viewer (Phase 8A)
  *   L                              — modo launch animation (Phase 8B/8C)
@@ -39,6 +45,7 @@
 #include <launch/LaunchVehicle.hpp>
 #include <launch/AscentIntegrator.hpp>
 #include <launch/GuidanceLaw.hpp>
+#include <launch/OrbitalManeuvers.hpp>
 #include <physics/CelestialBody.hpp>
 #include <physics/Atmosphere.hpp>
 #include <math/Constants.hpp>
@@ -269,9 +276,38 @@ int main()
     // Radio del anillo de órbita objetivo en render space
     float targetOrbitR = (float)((earth.radius + guidance.targetApoapsis) * P2R);
 
+    // ── Phase 8D: circularización ─────────────────────────────────────────────
+    CircularizationResult circ;
+    if (ascent.orbitInserted) {
+        circ = OrbitalManeuvers::circularize(ascent, earth);
+    }
+
+    // Elipse de inserción pre-muestreada (segmentos sobre superficie solamente)
+    struct OrbitSeg { Vector3 a, b; };
+    std::vector<OrbitSeg> insertionSegs;
+    if (circ.valid) {
+        const int   segs  = 120;
+        const double T    = circ.insertionOrbit.getPeriod();
+        const double tEpoch = ascent.cutoffTime;
+        for (int k = 0; k < segs; ++k) {
+            double ta = tEpoch + (double)k       / segs * T;
+            double tb = tEpoch + (double)(k + 1) / segs * T;
+            dvec3 pa = circ.insertionOrbit.getPositionAtTime(ta);
+            dvec3 pb = circ.insertionOrbit.getPositionAtTime(tb);
+            // Solo dibujar segmentos donde ambos puntos estén sobre la superficie
+            if (glm::length(pa) >= earth.radius && glm::length(pb) >= earth.radius)
+                insertionSegs.push_back({ p2r(pa), p2r(pb) });
+        }
+    }
+
+    // Radio del anillo de la órbita circular (= apoapsis de inserción)
+    float circOrbitR = circ.valid
+        ? (float)(circ.circularOrbit.a * P2R)
+        : targetOrbitR;
+
     // ── Window ───────────────────────────────────────────────────────────────
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_MSAA_4X_HINT);
-    InitWindow(1280, 720, "Project Phoenix — Launch Viewer (8A+8B+8C)");
+    InitWindow(1280, 720, "Project Phoenix — Launch Viewer (8A+8B+8C+8D)");
     SetTargetFPS(60);
 
     // ── Estado de UI ─────────────────────────────────────────────────────────
@@ -490,7 +526,24 @@ int main()
                     float a1 = (float)(k + 1) / segs * twoPi;
                     Vector3 p0 = { targetOrbitR * std::cos(a0), 0.0f, targetOrbitR * std::sin(a0) };
                     Vector3 p1 = { targetOrbitR * std::cos(a1), 0.0f, targetOrbitR * std::sin(a1) };
-                    DrawLine3D(p0, p1, { 80, 220, 80, 60 });
+                    DrawLine3D(p0, p1, { 80, 220, 80, 50 });
+                }
+            }
+
+            // Phase 8D — elipse de inserción (naranja tenue, solo porción visible)
+            for (const auto &sg : insertionSegs)
+                DrawLine3D(sg.a, sg.b, { 220, 150, 40, 70 });
+
+            // Phase 8D — anillo de órbita circular post-circularización (cian)
+            if (circ.valid) {
+                const int  segs  = 64;
+                const float twoPi = 6.2832f;
+                for (int k = 0; k < segs; ++k) {
+                    float a0 = (float)k       / segs * twoPi;
+                    float a1 = (float)(k + 1) / segs * twoPi;
+                    Vector3 p0 = { circOrbitR * std::cos(a0), 0.0f, circOrbitR * std::sin(a0) };
+                    Vector3 p1 = { circOrbitR * std::cos(a1), 0.0f, circOrbitR * std::sin(a1) };
+                    DrawLine3D(p0, p1, { 60, 220, 240, 110 });
                 }
             }
 
@@ -607,8 +660,8 @@ int main()
             }
             hudRow(px+8,ry,"Time scale", "x"+fmt(timeScale,0));
 
-            // Panel órbita (Phase 8C)
-            hudBox(px, py+250, 248, 100);
+            // Panel órbita (Phase 8C/8D)
+            hudBox(px, py+250, 248, 120);
             DrawText(ascent.orbitInserted ? "ORBIT INSERTION" : "FINAL ORBIT",
                      px+8, py+256, 13,
                      ascent.orbitInserted ? Color{100,255,100,255} : Color{200,200,200,220});
@@ -618,7 +671,13 @@ int main()
                              ascent.orbitInserted ? Color{100,255,100,255} : WHITE); ry2+=18;
             hudRow(px+8,ry2,"Periapsis",   fmt(ascent.periapsis/1000.,1)+" km"); ry2+=18;
             hudRow(px+8,ry2,"Max-Q",       fmt(ascent.maxDynPressure/1000.,1)+" kPa @ "
-                             +fmt(ascent.maxDynPressureAlt/1000.,1)+" km");
+                             +fmt(ascent.maxDynPressureAlt/1000.,1)+" km"); ry2+=18;
+            // Phase 8D: circularization ΔV
+            if (circ.valid) {
+                hudRow(px+8,ry2,"Circ. DV",
+                       fmt(circ.deltaV,1)+" m/s",
+                       Color{60,220,240,255});
+            }
 
             // Flash de separación de etapa
             if (stagingFlash > 0.0f) {
@@ -631,11 +690,14 @@ int main()
                 DrawText(msg.c_str(), 320, 320, 22, {255, 200, 60, alpha});
             }
 
-            // Flash de inserción orbital (Phase 8C)
+            // Flash de inserción orbital (Phase 8C/8D)
             if (insertionFlash > 0.0f) {
                 unsigned char alpha = (unsigned char)(std::min(1.0f, insertionFlash) * 255);
                 std::string apo = fmt(ascent.apoapsis / 1000.0, 1) + " km";
-                std::string msg = "  ORBIT INSERTION  apo = " + apo + "  ENGINE CUTOFF";
+                std::string dvStr = circ.valid
+                    ? ("  circ.DV=" + fmt(circ.deltaV, 1) + " m/s")
+                    : "";
+                std::string msg = "  ORBIT INSERTION  apo=" + apo + dvStr + "  ENGINE CUTOFF";
                 DrawRectangle(200, 355, 880, 42, {10,30,10,(unsigned char)(alpha*0.85f)});
                 DrawRectangleLines(200, 355, 880, 42, {80, 255, 120, alpha});
                 DrawText(msg.c_str(), 220, 366, 20, {120, 255, 140, alpha});

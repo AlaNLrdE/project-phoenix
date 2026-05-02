@@ -95,6 +95,7 @@ set(SOURCES
     ${SRC_DIR}/ui/MissionDisplay.cpp
     ${SRC_DIR}/launch/LaunchVehicle.cpp
     ${SRC_DIR}/launch/AscentIntegrator.cpp
+    ${SRC_DIR}/launch/OrbitalManeuvers.cpp
 )
 
 set(HEADERS
@@ -177,6 +178,7 @@ set(PHYSICS_SOURCES
     ${SRC_DIR}/world/SphereOfInfluence.cpp
     ${SRC_DIR}/launch/LaunchVehicle.cpp
     ${SRC_DIR}/launch/AscentIntegrator.cpp
+    ${SRC_DIR}/launch/OrbitalManeuvers.cpp
 )
 
 find_package(raylib 5 QUIET)

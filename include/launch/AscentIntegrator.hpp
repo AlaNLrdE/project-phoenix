@@ -53,6 +53,8 @@ struct AscentResult {
     double cutoffTime        = 0.0;  ///< s — when engine was cut
     double cutoffAltitude    = 0.0;  ///< m — altitude at engine cutoff
     double cutoffSpeed       = 0.0;  ///< m/s — speed at engine cutoff
+    dvec3  cutoffPosition    = dvec3(0.0); ///< ECI position at engine cutoff (Phase 8D)
+    dvec3  cutoffVelocity    = dvec3(0.0); ///< ECI velocity at engine cutoff (Phase 8D)
 };
 
 // ── Integrador de ascenso ────────────────────────────────────────────────────

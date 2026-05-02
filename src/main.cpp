@@ -15,6 +15,7 @@
 #include <math/Constants.hpp>
 #include <launch/LaunchVehicle.hpp>
 #include <launch/AscentIntegrator.hpp>
+#include <launch/OrbitalManeuvers.hpp>
 
 using namespace Phoenix::Math;
 using namespace Phoenix::Physics;
@@ -1092,6 +1093,145 @@ void demo_phase8C()
 // ── (fim demo_phase8C) ────────────────────────────────────────────────────────
 
 /**
+ * Phase 8D — Orbital Maneuvers: circularization burn at apoapsis.
+ *
+ * Toma el resultado de inserción orbital de Phase 8C y calcula:
+ *   - Órbita de inserción (elipse) desde el vector de estado en engine cutoff
+ *   - ΔV de circularización en apoapsis (maniobra Hohmann)
+ *   - Órbita circular final en el mismo plano
+ *
+ * La maniobra es un impulso pro-grado en apoapsis que sube el periapsis
+ * desde bajo la superficie hasta la altitud de apoapsis, cerrando la órbita.
+ */
+void demo_phase8D()
+{
+    std::cout << "\n╔══════════════════════════════════════════════════════════════╗\n";
+    std::cout << "║     PHASE 8D — ORBITAL MANEUVERS (Circularization Burn)      ║\n";
+    std::cout << "╚══════════════════════════════════════════════════════════════╝\n";
+
+    CelestialBody earth(
+        "Earth", 5.972e24,
+        6371000.0 * Constants::KSP_SCALE, 86164.0,
+        Constants::MU_EARTH * Constants::KSP_SCALE * Constants::KSP_SCALE,
+        9.81, true, 70000.0 * Constants::KSP_SCALE);
+
+    Atmosphere atm = Atmosphere::makeEarthLike(Constants::KSP_SCALE);
+
+    // Atlas-K — mismo vehículo que Phase 8C
+    LaunchVehicle falcon("Atlas-K (KSP 0.1)");
+    {
+        StageConfig s0; s0.name="Booster"; s0.strutMass=100; s0.decouplerMass=50;
+        s0.hasDecoupler=true;
+        s0.engines.push_back({"RD-180K", 200, 180000, 300, 1});
+        s0.tanks.push_back({"S1-Tank", 600, 9000});
+        falcon.addStage(s0);
+    }
+    {
+        StageConfig s1; s1.name="UpperStage"; s1.strutMass=30; s1.hasDecoupler=false;
+        s1.engines.push_back({"RL10K", 100, 90000, 350, 1});
+        s1.tanks.push_back({"S2-Tank", 300, 2500});
+        s1.tanks.push_back({"Capsule", 500, 0});
+        falcon.addStage(s1);
+    }
+
+    GuidanceLaw guidance;
+    guidance.hKick          = 200.0;
+    guidance.hTurn          = 6000.0;
+    guidance.maxQLimit      = 35000.0;
+    guidance.maxQThrottle   = 0.75;
+    guidance.targetApoapsis = 40000.0;
+
+    AscentIntegrator integrator(falcon, earth, &atm);
+    integrator.setThrottle(1.0);
+    integrator.setRecordInterval(40);
+    integrator.setGuidance(guidance);
+
+    std::cout << "  Simulando ascenso guiado...\n";
+    AscentResult res = integrator.simulate(0.05, 900.0, 0.0);
+
+    if (!res.orbitInserted) {
+        std::cout << "  ✗ No se logro insercion orbital — saltando Phase 8D\n";
+        return;
+    }
+
+    // ── Calcular maniobra de circularización ─────────────────────────────────
+    CircularizationResult circ = OrbitalManeuvers::circularize(res, earth);
+
+    const std::string SEP(60, '-');
+    std::cout << std::fixed << std::setprecision(3);
+
+    std::cout << "\n+" << std::string(60,'=') << "+\n";
+    std::cout << "|  ORBITA DE INSERCION (post engine cutoff)                  |\n";
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Semieje mayor (a)  : " << std::right << std::setw(10)
+              << circ.insertionOrbit.a/1000.0   << " km                        |\n";
+    std::cout << "|  Excentricidad (e)  : " << std::setw(10)
+              << std::setprecision(6) << circ.insertionOrbit.e
+              << "                        |\n";
+    std::cout << "|  Inclinacion (i)    : " << std::setw(10)
+              << std::setprecision(3) << Units::RAD_TO_DEG(circ.insertionOrbit.i)
+              << " deg                     |\n";
+    std::cout << std::setprecision(1);
+    std::cout << "|  Apoapsis           : " << std::setw(10)
+              << res.apoapsis/1000.0  << " km                        |\n";
+    std::cout << "|  Periapsis          : " << std::setw(10)
+              << res.periapsis/1000.0 << " km                        |\n";
+    std::cout << "|  Periodo            : " << std::setw(10)
+              << circ.insertionOrbit.getPeriod()/60.0 << " min                       |\n";
+    std::cout << "+" << std::string(60,'=') << "+\n";
+
+    std::cout << "\n+" << std::string(60,'=') << "+\n";
+    std::cout << "|  MANIOBRA DE CIRCULARIZACION (Hohmann en apoapsis)         |\n";
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Altitud del burn   : " << std::setw(10)
+              << circ.burnAltitude/1000.0 << " km                        |\n";
+
+    // Velocidades en apoapsis
+    double r_apo   = earth.radius + res.apoapsis;
+    double v_apo   = std::sqrt(earth.mu * (2.0/r_apo - 1.0/circ.insertionOrbit.a));
+    double v_circ  = std::sqrt(earth.mu / r_apo);
+    std::cout << "|  v en apoapsis      : " << std::setw(10)
+              << v_apo  << " m/s                      |\n";
+    std::cout << "|  v circular         : " << std::setw(10)
+              << v_circ << " m/s                      |\n";
+    std::cout << "|  Delta-V requerido  : " << std::setw(10)
+              << circ.deltaV << " m/s  <-- maniobra          |\n";
+    std::cout << "+" << std::string(60,'=') << "+\n";
+
+    std::cout << "\n+" << std::string(60,'=') << "+\n";
+    std::cout << "|  ORBITA CIRCULAR FINAL                                     |\n";
+    std::cout << "+" << SEP << "+\n";
+    std::cout << "|  Radio (= apoapsis) : " << std::setw(10)
+              << circ.circularOrbit.a/1000.0 << " km                        |\n";
+    std::cout << "|  Altitud circular   : " << std::setw(10)
+              << (circ.circularOrbit.a - earth.radius)/1000.0
+              << " km                        |\n";
+    std::cout << "|  Excentricidad      : " << std::setw(10)
+              << std::setprecision(6) << circ.circularOrbit.e
+              << "                        |\n";
+    std::cout << std::setprecision(1);
+    std::cout << "|  Velocidad orbital  : " << std::setw(10)
+              << v_circ << " m/s                      |\n";
+    std::cout << "|  Periodo            : " << std::setw(10)
+              << circ.circularOrbit.getPeriod()/60.0 << " min                       |\n";
+    std::cout << "+" << std::string(60,'=') << "+\n";
+
+    // Budget total ΔV de la misión
+    double dv_ascent = falcon.getTotalDeltaV();
+    std::cout << "\n  Budget de mision (estimado):\n";
+    std::cout << "  ΔV ascenso (Tsiolkovsky, vacio): " << std::setprecision(0)
+              << dv_ascent << " m/s\n";
+    std::cout << "  ΔV circularizacion:              " << std::setprecision(1)
+              << circ.deltaV << " m/s\n";
+    std::cout << "  Total misión (ascenso+circ):     "
+              << std::setprecision(0) << (dv_ascent + circ.deltaV) << " m/s\n";
+
+    std::cout << "\n  ✓ Phase 8D complete — OrbitalManeuvers::circularize() operativo\n";
+}
+
+// ── (fim demo_phase8D) ────────────────────────────────────────────────────────
+
+/**
  * Phase 8A — Vehicle Modeling: multi-stage launch vehicle.
  *
  * Modela un cohete de 3 etapas al estilo Soyuz (escala KSP 0.1):
@@ -1202,6 +1342,7 @@ int main()
 ║  Phase 8A: LaunchVehicle — Stage modeling, DV, TWR, CoM     ║
 ║  Phase 8B: AscentIntegrator — RK4 launch, staging           ║
 ║  Phase 8C: GuidanceLaw — Pitch program, Max-Q, orbit ins.   ║
+║  Phase 8D: OrbitalManeuvers — Circularization burn, DV      ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
     )";
@@ -1221,6 +1362,7 @@ int main()
         demo_phase8A();
         demo_phase8B();
         demo_phase8C();
+        demo_phase8D();
 
         std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
@@ -1235,6 +1377,7 @@ int main()
 ║  Phase 8A — LaunchVehicle: etapas, DV, TWR, CoM             ║
 ║  Phase 8B — AscentIntegrator: RK4, staging, gravity turn    ║
 ║  Phase 8C — GuidanceLaw: pitch program, Max-Q, insercion    ║
+║  Phase 8D — OrbitalManeuvers: circularizacion, DV budget    ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
         )";

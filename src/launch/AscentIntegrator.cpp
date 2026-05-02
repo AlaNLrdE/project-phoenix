@@ -170,6 +170,8 @@ AscentResult AscentIntegrator::simulate(double dt, double maxTime,
                     result.cutoffTime     = time;
                     result.cutoffAltitude = alt;
                     result.cutoffSpeed    = spd;
+                    result.cutoffPosition = pos;
+                    result.cutoffVelocity = vel;
                     double r  = glm::length(pos);
                     double v2 = glm::dot(vel, vel);
                     double e  = 0.5 * v2 - body.mu / r;
