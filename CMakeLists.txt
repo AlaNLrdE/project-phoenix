@@ -193,29 +193,34 @@ if(NOT raylib_FOUND)
 endif()
 
 if(raylib_FOUND)
-    message(STATUS "✓ Raylib found — building phoenix_3d")
-    add_executable(phoenix_3d
-        ${SRC_DIR}/demo_3d.cpp
-        ${PHYSICS_SOURCES}
-    )
-    target_include_directories(phoenix_3d PRIVATE ${INCLUDE_DIR})
-    target_link_libraries(phoenix_3d PRIVATE glm::glm raylib)
-    if(APPLE)
-        target_link_libraries(phoenix_3d PRIVATE
-            "-framework OpenGL"
-            "-framework Cocoa"
-            "-framework IOKit"
-            "-framework CoreVideo"
-        )
-        target_compile_options(phoenix_3d PRIVATE -Wall -Wextra)
-    elseif(UNIX)
-        target_link_libraries(phoenix_3d PRIVATE GL m pthread dl rt X11)
-        target_compile_options(phoenix_3d PRIVATE -Wall -Wextra)
-    endif()
-    set_target_properties(phoenix_3d PROPERTIES
-        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    message(STATUS "✓ Raylib found — building phoenix_3d and phoenix_launch")
+
+    # ── Macro para targets Raylib (evita repetición) ──────────────────────────
+    function(add_raylib_demo TARGET_NAME MAIN_SRC)
+        add_executable(${TARGET_NAME} ${MAIN_SRC} ${PHYSICS_SOURCES})
+        target_include_directories(${TARGET_NAME} PRIVATE ${INCLUDE_DIR})
+        target_link_libraries(${TARGET_NAME} PRIVATE glm::glm raylib)
+        if(APPLE)
+            target_link_libraries(${TARGET_NAME} PRIVATE
+                "-framework OpenGL" "-framework Cocoa"
+                "-framework IOKit"  "-framework CoreVideo")
+            target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra)
+        elseif(UNIX)
+            target_link_libraries(${TARGET_NAME} PRIVATE GL m pthread dl rt X11)
+            target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra)
+        endif()
+        set_target_properties(${TARGET_NAME} PROPERTIES
+            CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    endfunction()
+
+    # Phase 7 — visor orbital 3D
+    add_raylib_demo(phoenix_3d ${SRC_DIR}/demo_3d.cpp)
+
+    # Phase 8 — lanzamiento 3D (crece con 8A..8F)
+    add_raylib_demo(phoenix_launch ${SRC_DIR}/demo_launch.cpp)
+
 else()
-    message(STATUS "⚠ Raylib not found — phoenix_3d skipped (brew install raylib)")
+    message(STATUS "⚠ Raylib not found — 3D demos skipped (brew install raylib)")
 endif()
 
 

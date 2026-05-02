@@ -11,14 +11,16 @@ Simulador de mecánica orbital inspirado en Kerbal Space Program, desarrollado e
 
 ## Estado por fases
 
-| Fase | Nombre                           | Estado       | Commit    |
-|------|----------------------------------|--------------|-----------|
-| 1    | Mecánica orbital Kepleriana      | ✅ Completa   | `7c16032` |
-| 2    | Jerarquía de partes              | ✅ Completa   | `ab82ad5` |
-| 3    | Propulsión (Engine, Tsiolkovsky) | ✅ Completa   | `724a9c3` |
-| 4    | Esferas de influencia (SoI)      | ✅ Completa   | `72110d4` |
-| 5    | Aerodinámica y reentrada         | 🔄 Planificada | —        |
-| 6    | Visualización / UI               | ⏳ Futura    | —         |
+| Fase | Nombre                                 | Estado         | Commit     |
+|------|----------------------------------------|----------------|------------|
+| 1    | Mecánica orbital Kepleriana            | ✅ Completa     | `7c16032`  |
+| 2    | Jerarquía de partes                    | ✅ Completa     | `ab82ad5`  |
+| 3    | Propulsión (Engine, Tsiolkovsky)       | ✅ Completa     | `724a9c3`  |
+| 4    | Esferas de influencia (SoI)            | ✅ Completa     | `72110d4`  |
+| 5    | Aerodinámica y reentrada               | ✅ Completa     | `9f65503`  |
+| 6    | Visualización ASCII / HUD              | ✅ Completa     | `cf38f7f`  |
+| 7    | Visualización 3D (Raylib 5)            | ✅ Completa     | `78b6ab8`  |
+| 8    | Launch to Orbit (staged rockets)       | 🔄 En progreso | —          |
 
 ---
 
@@ -330,12 +332,45 @@ if (result.hasTransition) {
 
 ---
 
-## Próxima fase (5): Aerodinámica y reentrada
 
-Planificada:
+## Próxima fase (8): Launch to Orbit (staged rockets)
 
-$$D = \frac{1}{2} \rho v^2 C_d A$$
+### 8A — Vehicle Modeling
+- `Stage` class: motor, tanque, estructura
+- `LaunchVehicle`: vector de stages, CoM/Isp agregados
+- Fuel distribution: transferencia entre tanques por gravedad
+- Masa de estructura (dry mass) por stage
+- Tracking de centro de masa dinámico durante quemado
 
-- Modelo de atmósfera exponencial por capas
-- Presión dinámica y coeficiente de arrastre por parte
-- Calentamiento aerodinámico y ablación
+### 8B — Launch Sequence
+- `LaunchController`: secuencia de ignición
+- Separation logic: detector de motor apagado, decoupler automático
+- Collision physics: separación segura entre stages (distancia mínima)
+- Launch clamps: restricción inicial de posición/velocidad
+
+### 8C — Ascent Guidance
+- Gravity turn profile: inicio de pitch at 50m/s, progresión temporal
+- Max-Q detection: búsqueda dinámica de punto de máxima presión dinámica
+- Throttle management: limitación por Max-Q
+- Target orbit specification: altitud, inclinación, argumento del nodo
+- Pitch program: cálculo de ángulo requerido vs. vuelo actual
+
+### 8D — Autopilot (Thrust Vector Control)
+- Gimbal control: vector thrust hacia proa deseada
+- PID controller: error de pitch/yaw/roll → gimbal angle
+- Fin control: aeroaletas para estabilidad (si aplica)
+- Throttle servo: rampa de empuje suave
+- g-limit: protección contra sobrecarga estructural
+
+### 8E — Orbital Insertion
+- Coast phase detection: apogeo → periapsis fijos
+- Circularization burn: cálculo ΔV, tiempo de ignición
+- Burn execution: timing, throttle profile
+- Achieve orbit: validación de elemento a circular
+
+### 8F — Launch Simulation UI
+- Real-time telemetry: altitud, velocidad, ángulo de vuelo, aceleración
+- Stage info: masa actual, empuje, ΔV disponible
+- Abort modes: emergency staging, chutes, reentrada
+- Flight director: guía visual de pitch/yaw/roll
+- Replay system: grabación y reproducción de vuelo
